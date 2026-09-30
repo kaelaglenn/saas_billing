@@ -1,0 +1,42 @@
+[project]
+name = "saas-billing"
+version = "0.1.0"
+description = "Mock B2B SaaS billing data generator and dbt + Snowflake analytics project"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "pyarrow>=17",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+generate-billing-data = "billing_generator.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["generator/billing_generator"]
+
+[tool.pytest.ini_options]
+testpaths = ["generator/tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B905"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["billing_generator"]

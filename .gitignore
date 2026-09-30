@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Generated data (regenerate with `uv run generate-billing-data`)
+data/
+
+# dbt
+target/
+dbt_packages/
+logs/
+
+# Secrets
+.env
+*.p8
+*.pem
+
+.DS_Store

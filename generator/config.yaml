@@ -1,0 +1,128 @@
+# Every rate, mix, and probability used by the billing data generator.
+# Tune here; never in code. Rates marked "monthly" are per eligible subscription per month.
+
+seed: 42
+scale: 1.0                # multiplies opening subscriptions and trial volume (tests use < 1)
+output_dir: data
+
+window:
+  start_date: "2024-01-01"            # first UTC day of data; opening state is imported at 00:00 UTC
+  end_date: "2026-09-30"              # last day of data in the reporting timezone
+  reporting_timezone: America/New_York
+
+prices_cents:                          # per seat, per billing period
+  pro:     {monthly: 1900, annual: 20520}
+  premium: {monthly: 2900, annual: 31320}
+
+opening_state:
+  active_subscriptions: 3850
+  premium_share: 0.35
+  annual_share: 0.40                   # survivors skew annual because monthly churns faster
+  account_created_from: "2019-01-01"
+  account_created_to: "2023-11-30"
+
+signup_mix:
+  premium_share: 0.35
+  annual_share: 0.30
+  seats:
+    median: 6
+    sigma: 1.0                         # log-normal shape
+    min: 1
+    max: 250
+  invoice_payment:                     # only annual subscriptions may pay by invoice
+    large_account_min_seats: 20
+    prob_small_account: 0.34
+    prob_large_account: 0.85
+
+trials:
+  length_days: 30
+  conversion_rate: 0.16
+  base_monthly_starts: 690           # calibration knob for ending active subscriptions
+  annual_volume_growth: 0.06
+  seasonality: [1.00, 1.00, 1.15, 1.20, 1.20, 1.15, 0.95, 0.90, 1.15, 1.00, 0.90, 0.70]
+  monthly_noise_sd: 0.10
+  yearly_baseline_range: 0.08          # each year's baseline drawn uniformly within +/- this
+
+churn:
+  monthly_voluntary_cancel: 0.022      # monthly-billed subscriptions
+  annual_renewal_cancel: 0.12          # annual subscriptions, per renewal
+  annual_cancel_notice_days: [1, 90]   # annual cancellations are requested this long before renewal
+  cancel_reasons:
+    price: 0.30
+    switched_tool: 0.25
+    no_longer_needed: 0.25
+    company_closed: 0.10
+    missing_features: 0.10
+  shock:
+    months: ["2025-06", "2025-07"]
+    multiplier: 1.30                   # applied to voluntary cancels and first card failures
+
+card_payments:
+  first_attempt_failure: 0.05
+  outcome_after_failure:
+    recover_on_retry: 0.53              # spec had 0.45 / 0.30 / 0.25; lapse lowered to hit the
+    recover_after_card_update: 0.35     # 20-25% involuntary share, recoveries scaled up proportionally
+    lapse: 0.12
+  retry_interval_days: 7
+  retry_success_on_attempt_2: 0.60     # share of retry recoveries that succeed on attempt 2 vs 3
+  card_update_before_attempt_2: 0.60
+  failure_reasons:
+    insufficient_funds: 0.45
+    card_declined: 0.35
+    card_expired: 0.20
+
+invoice_payments:
+  net_days: 30
+  lapse_days_past_due: 60
+  outcome:
+    on_time: 0.70
+    late: 0.27
+    never: 0.03
+  late_partial_share: 0.40             # late payers who pay in 2-3 installments
+  never_partial_share: 0.30            # non-payers who send one partial payment first
+  late_payment_max_days_past_due: 55
+  methods:
+    bank_transfer: 0.60
+    cheque: 0.40
+
+changes:                               # monthly probability per eligible subscription
+  add_seats: 0.04
+  remove_seats: 0.02
+  plan_upgrade: 0.012                  # pro only
+  plan_downgrade: 0.006                # premium only
+  frequency_switch: 0.005
+  seat_change_size_per_seat: 0.10      # seats changed = 1 + Poisson(this * current seats)
+  opposite_seat_change_share: 0.15
+  lookalike_seat_increase_share: 0.01  # genuine same-day identical second increase
+
+reactivation:
+  window_months: 18
+  prob_after_lapsed: 0.18
+  prob_after_cancelled: 0.08
+  keep_previous_config: 0.60
+
+messiness:                             # applied to data/raw only, after validation
+  event_duplicate_rate: 0.005
+  event_duplicate_delay_seconds: [5, 21600]
+  payment_double_load_rate: 0.002
+  late_arrival_rate: 0.01
+  late_arrival_days: [1, 5]
+
+targets:                               # soft checks printed after each run
+  ending_active_subscriptions: [4750, 5250]
+  blended_monthly_logo_churn: [0.020, 0.030]
+  involuntary_share_of_churn: [0.20, 0.25]
+
+accounts:
+  industries:
+    software: 0.22
+    professional_services: 0.16
+    healthcare: 0.10
+    financial_services: 0.10
+    retail_ecommerce: 0.10
+    education: 0.08
+    manufacturing: 0.08
+    media_marketing: 0.08
+    nonprofit: 0.04
+    other: 0.04
+  employees_per_seat: [1.0, 4.0]       # company size = seats x uniform(this range)
