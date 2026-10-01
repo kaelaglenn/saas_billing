@@ -5,6 +5,8 @@ description = "Mock B2B SaaS billing data generator and dbt + Snowflake analytic
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
+    "dbt-core>=1.12.5",
+    "dbt-snowflake>=1.12.1",
     "dlt[parquet,snowflake]>=1.30.0",
     "numpy>=2.0",
     "pandas>=2.2",

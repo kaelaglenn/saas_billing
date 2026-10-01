@@ -1,0 +1,25 @@
+name: saas_billing
+version: "1.0.0"
+profile: saas_billing    # connection settings live in profiles.yml, next to this file
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+clean-targets: ["target", "dbt_packages"]
+
+flags:
+  send_anonymous_usage_stats: false
+
+# Defaults per folder, so individual models rarely need their own config.
+# +schema only takes effect in prod; dev and CI build everything into one schema (see macros/generate_schema_name.sql).
+models:
+  saas_billing:
+    staging:            # one cleaned-up model per raw table: rename, cast, deduplicate
+      +materialized: view
+      +schema: staging
+    intermediate:       # reusable steps between staging and marts
+      +materialized: view
+      +schema: intermediate
+    marts:              # final models people query
+      +materialized: table
+      +schema: marts
