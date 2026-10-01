@@ -16,6 +16,7 @@ generate-billing-data = "billing_generator.cli:main"
 
 [dependency-groups]
 dev = [
+    "pre-commit>=4.6.2",
     "pytest>=8",
     "ruff>=0.6",
 ]

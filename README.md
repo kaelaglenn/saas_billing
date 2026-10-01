@@ -12,7 +12,7 @@ generator (Python) ──▶ data/raw/*.parquet ──dlt──▶ Snowflake RAW
 ## Roadmap
 
 - [x] Billing data generator with validation, ground truth, and seeded messiness ([spec](docs/billing_data_generator_spec.md))
-- [ ] Snowflake bootstrap: databases, roles, warehouses, key-pair service users, resource monitor
+- [x] Snowflake bootstrap: databases, roles, warehouses, key-pair service users, resource monitor ([setup](snowflake/README.md))
 - [ ] dlt pipeline: `data/raw` → Snowflake `RAW`
 - [ ] dbt project: sources, staging, SCD2 subscription history, MRR and movements, invoices and collections
 - [ ] Tests against the answer key in `data/truth`
@@ -30,6 +30,21 @@ uv run pytest                         # calendar math + an end-to-end run at 5% 
 
 Options: `--seed`, `--scale` (e.g. `0.1` for a fast 10% dataset), `--output-dir`, `--no-csv`.
 Every rate, mix, and probability lives in [generator/config.yaml](generator/config.yaml).
+
+## How we work
+
+All changes land on `main` through pull requests. Branch per change (`feat/…`, `fix/…`, `chore/…`), push,
+open a PR, merge once checks pass.
+
+After cloning, install the git hooks:
+
+```bash
+uv run pre-commit install
+```
+
+The hooks refuse commits made directly on `main`, block private keys from being committed, and run ruff.
+GitHub won't enforce branch protection on a free private repo, so the hook is the guardrail until the repo
+goes public.
 
 ## Generator
 

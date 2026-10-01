@@ -1,0 +1,17 @@
+# Install once per clone: uv run pre-commit install
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: no-commit-to-branch      # work happens on branches; main changes only through PRs
+        args: [--branch, main]
+      - id: detect-private-key       # Snowflake key-pair auth means private keys exist on this machine
+      - id: check-added-large-files
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.9
+    hooks:
+      - id: ruff-check
