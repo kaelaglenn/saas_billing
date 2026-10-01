@@ -1,0 +1,216 @@
+# Raw billing data landed by dlt (loader/raw_loader). Read-only for dbt.
+#
+# Test severity convention:
+#   error  something that should never happen in the source; fail the build
+#   warn   a known data-quality issue in the source that staging models fix; documented, not blocking
+#
+# dlt keeps its bookkeeping in its own _DLT_* tables (not declared here). Because the loader hands dlt Arrow tables,
+# the data tables arrive exactly as generated, with no extra dlt columns.
+# Timestamps are UTC (TIMESTAMP_TZ) everywhere except accounts, which stores naive ET (TIMESTAMP_NTZ).
+
+sources:
+  - name: billing
+    description: Billing system tables for the fictional B2B SaaS company, loaded in full on every run.
+    database: RAW
+    schema: BILLING
+    tables:
+
+      - name: accounts
+        description: One row per customer. created_at / updated_at are naive America/New_York datetimes (source quirk).
+        columns:
+          - name: account_id
+            data_tests:
+              - not_null
+              - unique
+              - dbt_expectations.expect_column_values_to_match_regex:
+                  arguments:
+                    regex: "^acct_[0-9]{6}$"
+          - name: company_size_band
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["1-10", "11-50", "51-200", "201+"]
+          - name: created_at
+            data_tests:
+              - not_null
+
+      - name: subscriptions
+        description: Current state of each subscription, overwritten on every change (like an application database).
+        columns:
+          - name: subscription_id
+            data_tests:
+              - not_null
+              - unique
+          - name: account_id
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('billing', 'accounts')
+                    field: account_id
+          - name: status
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["trialing", "active", "past_due", "cancelled", "lapsed", "trial_expired"]
+          - name: plan
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["pro", "premium"]
+          - name: billing_frequency
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["monthly", "annual"]
+          - name: payment_method
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["card", "invoice"]
+          - name: seats
+            data_tests:
+              - dbt_expectations.expect_column_values_to_be_between:
+                  arguments:
+                    min_value: 1
+          - name: subscription_amount_cents
+            data_tests:
+              - dbt_expectations.expect_column_values_to_be_between:
+                  arguments:
+                    min_value: 0
+
+      - name: subscription_events
+        description: Append-only subscription history. attributes is a JSON string whose keys depend on event_type.
+        data_tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [subscription_id, event_type, requested_at, effective_at, attributes]
+              config:
+                severity: warn   # known: retried webhooks re-emit an event with a new event_id
+        columns:
+          - name: event_id
+            data_tests:
+              - not_null
+              - unique
+          - name: subscription_id
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('billing', 'subscriptions')
+                    field: subscription_id
+          - name: event_type
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["trial_started", "trial_expired", "subscription_started", "subscription_imported",
+                             "plan_updated", "renewed", "cancelled", "lapsed"]
+          - name: requested_at
+            data_tests:
+              - not_null
+          - name: ingested_at
+            data_tests:
+              - not_null
+              - dbt_utils.expression_is_true:
+                  arguments:
+                    expression: ">= requested_at"
+          - name: attributes
+            data_tests:
+              - not_null
+
+      - name: invoices
+        columns:
+          - name: invoice_id
+            data_tests:
+              - not_null
+              - unique
+          - name: subscription_id
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('billing', 'subscriptions')
+                    field: subscription_id
+          - name: invoice_type
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["renewal", "proration"]
+          - name: payment_method
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["card", "invoice"]
+          - name: status
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["open", "paid", "partially_paid", "past_due", "uncollectible"]
+          - name: amount_due_cents
+            data_tests:
+              - dbt_expectations.expect_column_values_to_be_between:
+                  arguments:
+                    min_value: 1
+
+      - name: invoice_line_items
+        columns:
+          - name: line_item_id
+            data_tests:
+              - not_null
+              - unique
+          - name: invoice_id
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('billing', 'invoices')
+                    field: invoice_id
+          - name: line_type
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["subscription", "seat_proration", "plan_proration"]
+          - name: amount_cents
+            data_tests:
+              - dbt_expectations.expect_column_values_to_be_between:
+                  arguments:
+                    min_value: 0
+
+      - name: payments
+        description: One row per payment attempt (cards, with retries) or received payment (invoices).
+        data_tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "failure_reason is not null"
+              config:
+                where: "status = 'failed'"
+        columns:
+          - name: payment_id
+            data_tests:
+              - not_null
+              - unique:
+                  config:
+                    severity: warn   # known: some rows were loaded twice with the same payment_id
+          - name: invoice_id
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('billing', 'invoices')
+                    field: invoice_id
+          - name: method
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["card", "cheque", "bank_transfer"]
+          - name: status
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["succeeded", "failed"]
+          - name: attempt_number
+            data_tests:
+              - dbt_expectations.expect_column_values_to_be_between:
+                  arguments:
+                    min_value: 1
+                    max_value: 3

@@ -23,3 +23,11 @@ models:
     marts:              # final models people query
       +materialized: table
       +schema: marts
+
+  # Audits the project's structure (naming, DAG shape, test and doc coverage). Dev and CI only, never prod.
+  dbt_project_evaluator:
+    +enabled: "{{ target.name != 'prod' }}"
+
+seeds:
+  dbt_project_evaluator:
+    +enabled: "{{ target.name != 'prod' }}"
