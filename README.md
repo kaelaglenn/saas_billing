@@ -100,6 +100,12 @@ One-time setup on a new machine:
    cd transform && dbt debug
    ```
 
+6. Install dbt packages (versions pinned in `transform/package-lock.yml`):
+
+   ```bash
+   dbt deps
+   ```
+
 ## How we work
 
 All changes land on `main` through pull requests. Branch per change (`feat/…`, `fix/…`, `chore/…`, `ci/…`),
