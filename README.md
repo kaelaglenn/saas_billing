@@ -13,7 +13,7 @@ generator (Python) ──▶ data/raw/*.parquet ──dlt──▶ Snowflake RAW
 
 - [x] Billing data generator with validation, ground truth, and seeded messiness ([spec](docs/billing_data_generator_spec.md))
 - [x] Snowflake bootstrap: databases, roles, warehouses, key-pair service users, resource monitor ([setup](snowflake/README.md))
-- [ ] dlt pipeline: `data/raw` → Snowflake `RAW`
+- [x] dlt pipeline: `data/raw` → Snowflake `RAW.BILLING` ([loading](#loading-into-snowflake))
 - [ ] dbt project: sources, staging, SCD2 subscription history, MRR and movements, invoices and collections
 - [ ] Tests against the answer key in `data/truth`
 - [ ] CI/CD: SQLFluff, slim CI into per-PR schemas, prod deploys on merge, scheduled runs, docs on Pages
@@ -30,6 +30,30 @@ uv run pytest                         # calendar math + an end-to-end run at 5% 
 
 Options: `--seed`, `--scale` (e.g. `0.1` for a fast 10% dataset), `--output-dir`, `--no-csv`.
 Every rate, mix, and probability lives in [generator/config.yaml](generator/config.yaml).
+
+## Loading into Snowflake
+
+After the [Snowflake setup](snowflake/README.md), copy the secrets template and fill in your account identifier
+and the absolute path to the `DLT_SVC` private key:
+
+```bash
+cp .dlt/secrets.toml.example .dlt/secrets.toml
+```
+
+Then generate and load:
+
+```bash
+uv run generate-billing-data && uv run load-raw
+```
+
+[load.py](loader/raw_loader/load.py) loads the six raw tables into `RAW.BILLING`, replacing them each run (the
+generator always rewrites full history), then checks row counts against the files. Source duplicates and late
+arrivals are loaded as-is; cleaning them up is dbt's job. Naive timestamps stay naive (`TIMESTAMP_NTZ`) so the
+`accounts` timezone quirk reaches dbt intact.
+
+Non-secret settings are in [.dlt/config.toml](.dlt/config.toml). In CI, secrets come from environment variables
+such as `DESTINATION__SNOWFLAKE__CREDENTIALS__HOST` and `DESTINATION__SNOWFLAKE__CREDENTIALS__PRIVATE_KEY`.
+The loader tests run against DuckDB, so they need no credentials.
 
 ## How we work
 
