@@ -56,6 +56,50 @@ Non-secret settings are in [.dlt/config.toml](.dlt/config.toml). In CI, secrets 
 such as `DESTINATION__SNOWFLAKE__CREDENTIALS__HOST` and `DESTINATION__SNOWFLAKE__CREDENTIALS__PRIVATE_KEY`.
 The loader tests run against DuckDB, so they need no credentials.
 
+## Developing with dbt
+
+The dbt project is in [transform/](transform/). Connection settings for every environment are in
+[transform/profiles.yml](transform/profiles.yml); anything personal or secret comes from environment variables.
+
+| Target | Who runs it | Role | Builds into |
+|---|---|---|---|
+| `dev` (default) | you, locally | `DEVELOPER` | `ANALYTICS_DEV.<your DBT_SCHEMA>` |
+| `ci` | GitHub Actions on PRs | `DEVELOPER` | `ANALYTICS_DEV.DBT_PR_<number>` |
+| `prod` | GitHub Actions on merge | `TRANSFORMER` | `ANALYTICS.STAGING`, `ANALYTICS.MARTS`, … |
+
+One-time setup on a new machine:
+
+1. Install [direnv](https://direnv.net), which loads the project's environment when you `cd` into the repo:
+
+   ```bash
+   brew install direnv
+   ```
+
+   Then add `eval "$(direnv hook zsh)"` to the end of `~/.zshrc` and open a new terminal.
+2. Create a key pair for your own Snowflake user and run the `ALTER USER` statement it prints:
+
+   ```bash
+   snowflake/generate_keypair.sh <YOUR_SNOWFLAKE_USER>
+   ```
+
+3. Copy the template and fill in your values:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+4. Approve the repo's [.envrc](.envrc) (direnv asks again whenever it changes):
+
+   ```bash
+   direnv allow
+   ```
+
+5. Check the connection. This builds nothing:
+
+   ```bash
+   cd transform && dbt debug
+   ```
+
 ## How we work
 
 All changes land on `main` through pull requests. Branch per change (`feat/…`, `fix/…`, `chore/…`, `ci/…`),

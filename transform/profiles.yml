@@ -1,0 +1,45 @@
+# Connection settings for each environment. dbt finds this file because it sits next to dbt_project.yml.
+# Values that differ per person or are secret come from environment variables:
+#   locally: .env at the repo root, loaded by direnv
+#   in CI:   GitHub Actions secrets
+# Pick a target with --target; dev is the default.
+
+saas_billing:
+  target: dev
+  outputs:
+
+    dev:      # you, on your laptop: builds into your own schema in ANALYTICS_DEV
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
+      role: DEVELOPER
+      warehouse: TRANSFORMING_WH
+      database: ANALYTICS_DEV
+      schema: "{{ env_var('DBT_SCHEMA') }}"
+      threads: 8
+      query_tag: dbt_dev
+
+    ci:       # GitHub Actions on pull requests: one throwaway schema per PR (DBT_PR_<number>)
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: DBT_CI_SVC
+      private_key: "{{ env_var('SNOWFLAKE_PRIVATE_KEY') }}"
+      role: DEVELOPER
+      warehouse: TRANSFORMING_WH
+      database: ANALYTICS_DEV
+      schema: "{{ env_var('DBT_SCHEMA') }}"
+      threads: 8
+      query_tag: dbt_ci
+
+    prod:     # GitHub Actions on merge to main: the only target that can write to ANALYTICS
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: DBT_PROD_SVC
+      private_key: "{{ env_var('SNOWFLAKE_PRIVATE_KEY') }}"
+      role: TRANSFORMER
+      warehouse: TRANSFORMING_WH
+      database: ANALYTICS
+      schema: PUBLIC        # fallback only; models land in their folder's schema (STAGING, MARTS, ...)
+      threads: 8
+      query_tag: dbt_prod
