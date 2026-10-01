@@ -26,10 +26,16 @@ resource monitor capped at 20 credits a month.
 ## Setup
 
 1. **Create a trial account** at [signup.snowflake.com](https://signup.snowflake.com): Enterprise edition, any
-   cloud and region. Note the account identifier (`<org>-<account>`) from **Admin → Accounts**.
+   cloud and region. Save the account identifier (`<org>-<account>`, under **Admin → Accounts**); dlt and dbt
+   use it to connect, so you'll need it when setting those up.
 2. **Run the bootstrap.** Open a Snowsight worksheet, paste [bootstrap.sql](bootstrap.sql), and choose
    **Run All**. It switches roles as it goes, so you need ACCOUNTADMIN (trial accounts start with it).
-3. **Create key pairs for the service users** and run the `ALTER USER` statement each one prints:
+3. **Create key pairs for the service users.** From the repo root, run the script once per user, then paste
+   the `ALTER USER` statement each run prints into a Snowsight worksheet and run it:
+
+   ```bash
+   cd ~/Projects/saas_billing
+   ```
 
    ```bash
    snowflake/generate_keypair.sh DLT_SVC
