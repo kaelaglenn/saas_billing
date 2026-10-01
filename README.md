@@ -16,7 +16,8 @@ generator (Python) ──▶ data/raw/*.parquet ──dlt──▶ Snowflake RAW
 - [x] dlt pipeline: `data/raw` → Snowflake `RAW.BILLING` ([loading](#loading-into-snowflake))
 - [ ] dbt project: sources, staging, SCD2 subscription history, MRR and movements, invoices and collections
 - [ ] Tests against the answer key in `data/truth`
-- [ ] CI/CD: SQLFluff, slim CI into per-PR schemas, prod deploys on merge, scheduled runs, docs on Pages
+- [x] CI: lint and tests on every PR ([ci.yml](.github/workflows/ci.yml))
+- [ ] CI/CD for dbt: SQLFluff, slim CI into per-PR schemas, prod deploys on merge, scheduled runs, docs on Pages
 
 ## Quickstart
 
@@ -57,8 +58,9 @@ The loader tests run against DuckDB, so they need no credentials.
 
 ## How we work
 
-All changes land on `main` through pull requests. Branch per change (`feat/…`, `fix/…`, `chore/…`), push,
-open a PR, merge once checks pass.
+All changes land on `main` through pull requests. Branch per change (`feat/…`, `fix/…`, `chore/…`, `ci/…`),
+push, open a PR, merge once checks pass. The [CI workflow](.github/workflows/ci.yml) runs the same hooks and
+the full test suite on every PR.
 
 After cloning, install the git hooks:
 
