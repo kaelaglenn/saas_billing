@@ -15,6 +15,7 @@ logs/
 
 # Secrets
 .env
+.dlt/secrets.toml
 *.p8
 *.pem
 

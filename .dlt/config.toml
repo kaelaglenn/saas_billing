@@ -1,0 +1,12 @@
+# Non-secret dlt settings. Secrets (account identifier and private key) come from .dlt/secrets.toml locally
+# or environment variables in CI, e.g. DESTINATION__SNOWFLAKE__CREDENTIALS__PRIVATE_KEY.
+
+[runtime]
+log_level = "WARNING"
+dlthub_telemetry = false
+
+[destination.snowflake.credentials]
+database = "RAW"
+username = "DLT_SVC"
+warehouse = "LOADING_WH"
+role = "LOADER"
