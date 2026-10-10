@@ -56,6 +56,11 @@ Non-secret settings are in [.dlt/config.toml](.dlt/config.toml). In CI, secrets 
 such as `DESTINATION__SNOWFLAKE__CREDENTIALS__HOST` and `DESTINATION__SNOWFLAKE__CREDENTIALS__PRIVATE_KEY`.
 The loader tests run against DuckDB, so they need no credentials.
 
+## Raw sources
+
+Grain, keys, timestamps and timezones, mutable vs append-only behavior, and every known null, duplicate,
+and anomaly for the six `RAW.BILLING` tables: [docs/raw_sources.md](docs/raw_sources.md).
+
 ## Developing with dbt
 
 The dbt project is in [transform/](transform/). Connection settings for every environment are in

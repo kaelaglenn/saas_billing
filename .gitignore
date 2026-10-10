@@ -20,4 +20,7 @@ logs/
 *.p8
 *.pem
 
+# Editors (per-person, machine-specific settings)
+.cursor/
+
 .DS_Store
