@@ -46,7 +46,10 @@ into days or months: billing periods start at 00:00 UTC, which is 7 or 8 p.m. ET
 - Naive ET timestamps: converting to UTC needs `convert_timezone('America/New_York', 'UTC', created_at)`;
   comparing them directly with UTC columns shifts late-evening rows by a day.
 - 3 accounts have `created_at` inside the repeated 1–2 a.m. hour on a November fall-back day, so their true UTC
-  instant is ambiguous.
+  instant is ambiguous. Snowflake resolves them to the first (EDT) occurrence; for all 3 the true instant was
+  the second (EST), so they convert one hour early. The source doesn't record which occurrence it was, so this
+  can't be corrected. Casting `TIMESTAMP_NTZ` to `TIMESTAMP_TZ` instead uses the session timezone and gets
+  every row wrong; see the `naive_to_utc` macro.
 
 **subscriptions**
 - Nulls all follow from status:

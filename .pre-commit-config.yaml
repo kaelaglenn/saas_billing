@@ -15,3 +15,14 @@ repos:
     rev: v0.16.9
     hooks:
       - id: ruff-check
+
+  # SQLFluff with the dbt templater compiles models through dbt, so it runs from the project's own environment
+  # (exact versions from uv.lock) and needs the Snowflake variables that direnv loads from .env.
+  - repo: local
+    hooks:
+      - id: sqlfluff-lint
+        name: sqlfluff lint (dbt SQL)
+        entry: uv run --no-sync sqlfluff lint
+        language: system
+        files: ^transform/(models|tests|analyses|snapshots)/.*\.sql$
+        require_serial: true

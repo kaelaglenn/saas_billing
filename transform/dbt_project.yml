@@ -27,6 +27,12 @@ models:
   # Audits the project's structure (naming, DAG shape, test and doc coverage). Dev and CI only, never prod.
   dbt_project_evaluator:
     +enabled: "{{ target.name != 'prod' }}"
+    marts:
+      tests:
+        # Off until scheduled loads exist: the generated data has a fixed end date, so freshness checks would
+        # warn on every run. Re-enable when source freshness is added.
+        fct_sources_without_freshness:
+          +enabled: false
 
 seeds:
   dbt_project_evaluator:
