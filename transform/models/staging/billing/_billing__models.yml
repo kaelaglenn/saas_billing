@@ -1,0 +1,211 @@
+models:
+
+  - name: stg_billing__accounts
+    description: >
+      One row per customer account. Timestamps converted from the source's naive America/New_York time to UTC.
+      Three accounts created inside the repeated 1-2 a.m. hour on 2025-11-02 resolve to the first (EDT)
+      occurrence; the source doesn't record which one it was, so they may be an hour early.
+    columns:
+      - name: account_id
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: company_name
+        description: Synthetic company name; not unique.
+      - name: industry
+        description: Industry, for segmentation.
+      - name: company_size_band
+        description: Employee-count band (1-10, 11-50, 51-200, 201+).
+      - name: created_at
+        description: When the account was created (UTC).
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: Last change to the account row (UTC). Changes when a subscription on the account starts or ends.
+        data_tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= created_at"
+
+  - name: stg_billing__subscriptions
+    description: >
+      One row per subscription, current state only (the source overwrites rows in place). An account can have
+      several subscriptions over time (reactivations get a new subscription_id) but at most one live at once.
+      Trials are rows too, with status trialing or trial_expired.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not (billing_frequency = 'monthly' and payment_method = 'invoice')"
+    columns:
+      - name: subscription_id
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: account_id
+        description: The customer.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_billing__accounts')
+                field: account_id
+      - name: subscription_status
+        description: Current status. Renamed from status.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["trialing", "active", "past_due", "cancelled", "lapsed", "trial_expired"]
+      - name: plan
+        description: Current plan.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["pro", "premium"]
+      - name: billing_frequency
+        description: Current billing frequency.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["monthly", "annual"]
+      - name: payment_method
+        description: card, or invoice (annual billing only).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["card", "invoice"]
+      - name: seats
+        description: Current seat count.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 1
+      - name: subscription_amount_cents
+        description: >
+          Amount charged per billing period at the current plan, seats, and frequency (seats x per-seat price).
+          Not MRR: annual amounts cover twelve months. Set for trials too (the would-be price).
+      - name: trial_started_at
+        description: Null for subscriptions imported on Jan 1, 2024 and for reactivations; neither had a trial.
+      - name: started_at
+        description: Paid start (trial conversion, reactivation, or original start for imported subscriptions). Null for trials that never converted.
+      - name: current_period_start_at
+        description: Start of the current (or last) billing period; the trial window for trials. Renamed from current_period_start.
+      - name: current_period_end_at
+        description: End of the current (or last) billing period. Renamed from current_period_end.
+      - name: cancel_requested_at
+        description: >
+          When a cancellation was requested. Also set on active subscriptions with a pending cancellation and on
+          subscriptions that lapsed before it took effect, so it doesn't by itself mean cancelled.
+      - name: ended_at
+        description: Null while the subscription is live (trialing, active, past_due).
+      - name: updated_at
+        description: Last change to the row (UTC).
+
+  - name: stg_billing__invoices
+    description: >
+      One row per invoice. invoice_status is as of the end of the data window; earlier statuses aren't kept by the
+      source. There's no paid date column; derive it from payments.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "due_at >= issued_at"
+    columns:
+      - name: invoice_id
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: account_id
+        description: The customer.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_billing__accounts')
+                field: account_id
+      - name: subscription_id
+        description: The subscription billed.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_billing__subscriptions')
+                field: subscription_id
+      - name: invoice_type
+        description: renewal (start of each paid period) or proration (mid-period increase).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["renewal", "proration"]
+      - name: invoice_status
+        description: Status at the end of the data window. Renamed from status.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["open", "paid", "partially_paid", "past_due", "uncollectible"]
+      - name: payment_method
+        description: card (charged at issue) or invoice (Net 30).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["card", "invoice"]
+      - name: amount_due_cents
+        description: Sum of the invoice's line items.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 1
+      - name: issued_at
+        description: When the invoice was issued (UTC).
+      - name: due_at
+        description: Equals issued_at for card invoices; issued_at + 30 days for invoice payment.
+
+  - name: stg_billing__invoice_line_items
+    description: >
+      One row per invoice line. Every invoice currently has exactly one line; that's a generator choice, so
+      downstream models shouldn't rely on it.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "service_period_end_at > service_period_start_at"
+    columns:
+      - name: line_item_id
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: invoice_id
+        description: The invoice this line belongs to.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_billing__invoices')
+                field: invoice_id
+      - name: line_type
+        description: subscription (full period), seat_proration, or plan_proration.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["subscription", "seat_proration", "plan_proration"]
+      - name: plan
+        description: Plan the line charges for.
+      - name: billing_frequency
+        description: Billing frequency the line charges for.
+      - name: quantity
+        description: Seats charged.
+      - name: unit_price_cents
+        description: Per seat, per period. For plan prorations, the price difference between plans.
+      - name: amount_cents
+        description: Line total, prorations rounded down in the customer's favor.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+      - name: service_period_start_at
+        description: >
+          Start of the period charged (UTC). Midnight UTC except a first period that starts mid-day at conversion.
+          Renamed from service_period_start.
+      - name: service_period_end_at
+        description: End of the period charged (UTC). Renamed from service_period_end.

@@ -24,6 +24,8 @@ dev = [
     "pre-commit>=4.6.2",
     "pytest>=8",
     "ruff>=0.6",
+    "sqlfluff>=4.4.0",
+    "sqlfluff-templater-dbt>=4.4.0",
 ]
 
 [build-system]

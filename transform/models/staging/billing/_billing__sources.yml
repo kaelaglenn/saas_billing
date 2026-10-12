@@ -119,6 +119,7 @@ sources:
               - not_null
 
       - name: invoices
+        description: One row per invoice. Amounts are fixed at issue; status is updated in place as payments arrive.
         columns:
           - name: invoice_id
             data_tests:
@@ -153,6 +154,7 @@ sources:
                     min_value: 1
 
       - name: invoice_line_items
+        description: One row per invoice line, written once with its invoice and never changed.
         columns:
           - name: line_item_id
             data_tests:

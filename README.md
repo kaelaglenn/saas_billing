@@ -111,6 +111,18 @@ One-time setup on a new machine:
    dbt deps
    ```
 
+dbt 1.12 also loads the repo's `.env` on its own, so dbt commands work even outside direnv; direnv still activates
+the Python environment for plain `dbt`, `sqlfluff`, and `pytest`.
+
+SQL style follows dbt Labs' style guide (lowercase, trailing commas, explicit aliases), enforced by
+[SQLFluff](.sqlfluff) with the dbt templater. The pre-commit hook lints changed models; from the repo root:
+
+```bash
+sqlfluff lint transform/models
+```
+
+`sqlfluff fix transform/models` applies the fixes it can make automatically.
+
 ## How we work
 
 All changes land on `main` through pull requests. Branch per change (`feat/…`, `fix/…`, `chore/…`, `ci/…`),

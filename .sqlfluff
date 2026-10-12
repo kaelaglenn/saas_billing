@@ -1,0 +1,50 @@
+# SQL linting for the dbt project. Style adapted from dbt Labs' style guide:
+# lowercase everything, trailing commas, 4-space indents, explicit aliases.
+#
+# The dbt templater compiles models through dbt, so linting needs the same connection settings as `dbt compile`
+# (locally: .env loaded by direnv). Run from the repo root:  sqlfluff lint transform/models
+
+[sqlfluff]
+dialect = snowflake
+templater = dbt
+max_line_length = 80
+runaway_limit = 10
+# CTE column order is a matter of readability, not a lint failure
+exclude_rules = structure.column_order
+
+[sqlfluff:templater:dbt]
+project_dir = transform
+profiles_dir = transform
+profile = saas_billing
+target = dev
+
+[sqlfluff:indentation]
+indent_unit = space
+tab_space_size = 4
+
+[sqlfluff:layout:type:comma]
+line_position = trailing
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.identifiers]
+extended_capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.functions]
+extended_capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.literals]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.types]
+extended_capitalisation_policy = lower
+
+[sqlfluff:rules:aliasing.table]
+aliasing = explicit
+
+[sqlfluff:rules:aliasing.column]
+aliasing = explicit
+
+[sqlfluff:rules:aliasing.expression]
+allow_scalar = false
