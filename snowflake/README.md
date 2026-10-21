@@ -60,3 +60,24 @@ resource monitor capped at 20 credits a month.
    ```
 
 To start over, [teardown.sql](teardown.sql) drops everything bootstrap.sql created.
+
+## GitHub Actions settings
+
+The [dbt CI workflow](../.github/workflows/dbt_ci.yml) connects as `DBT_CI_SVC` using two repository settings
+(GitHub → Settings → Secrets and variables → Actions):
+
+| Name | Kind | Value |
+|---|---|---|
+| `SNOWFLAKE_ACCOUNT` | variable | the account identifier |
+| `SNOWFLAKE_CI_PRIVATE_KEY` | secret | contents of `~/.snowflake/keys/DBT_CI_SVC.p8` |
+
+```bash
+gh variable set SNOWFLAKE_ACCOUNT --body "<ORG>-<ACCOUNT>"
+```
+
+```bash
+gh secret set SNOWFLAKE_CI_PRIVATE_KEY < ~/.snowflake/keys/DBT_CI_SVC.p8
+```
+
+**Moving to a new account** (e.g. a new trial): run the bootstrap, register keys, then update both settings
+with the commands above.

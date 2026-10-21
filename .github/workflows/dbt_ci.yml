@@ -1,0 +1,62 @@
+# Build and test the whole dbt project in Snowflake for every pull request that touches it.
+# Each PR gets its own schema, ANALYTICS_DEV.DBT_PR_<number>, rebuilt from empty on every run and dropped when the
+# PR closes (dbt_ci_cleanup.yml). Connects as DBT_CI_SVC (role DEVELOPER: reads RAW and ANALYTICS, writes only
+# ANALYTICS_DEV).
+#
+# Builds everything for now; slim CI (state:modified+ with --defer) comes with the production deploy job, which
+# produces the manifest it compares against.
+name: dbt CI
+
+on:
+  pull_request:
+    paths:
+      - "transform/**"
+      - ".sqlfluff"
+      - ".sqlfluffignore"
+      - ".github/sqlfluff-ci.cfg"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/dbt_ci.yml"
+
+concurrency:
+  group: dbt-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  SNOWFLAKE_ACCOUNT: ${{ vars.SNOWFLAKE_ACCOUNT }}
+  SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_CI_PRIVATE_KEY }}
+  DBT_SCHEMA: DBT_PR_${{ github.event.pull_request.number }}
+
+jobs:
+  dbt:
+    name: Lint SQL and dbt build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Install dbt packages
+        working-directory: transform
+        run: uv run dbt deps
+
+      - name: Lint SQL (SQLFluff, dbt templater)
+        run: uv run sqlfluff lint transform/models --config .github/sqlfluff-ci.cfg
+
+      - name: Start from an empty PR schema
+        working-directory: transform
+        run: |
+          uv run dbt run-operation drop_pr_schema --args "{schema_name: $DBT_SCHEMA}" --target ci
+
+      - name: dbt build (models, tests, dbt_project_evaluator)
+        working-directory: transform
+        run: uv run dbt build --target ci

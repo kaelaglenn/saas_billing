@@ -1,0 +1,46 @@
+# Drop a pull request's CI schema (ANALYTICS_DEV.DBT_PR_<number>) when the PR is merged or closed.
+name: dbt CI cleanup
+
+on:
+  pull_request:
+    types: [closed]
+    paths:
+      - "transform/**"
+      - ".sqlfluff"
+      - ".sqlfluffignore"
+      - ".github/sqlfluff-ci.cfg"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/dbt_ci.yml"
+
+permissions:
+  contents: read
+
+env:
+  SNOWFLAKE_ACCOUNT: ${{ vars.SNOWFLAKE_ACCOUNT }}
+  SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_CI_PRIVATE_KEY }}
+  DBT_SCHEMA: DBT_PR_${{ github.event.pull_request.number }}
+
+jobs:
+  drop-pr-schema:
+    name: Drop PR schema
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Install dbt packages
+        working-directory: transform
+        run: uv run dbt deps
+
+      - name: Drop the PR schema
+        working-directory: transform
+        run: |
+          uv run dbt run-operation drop_pr_schema --args "{schema_name: $DBT_SCHEMA}" --target ci

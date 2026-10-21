@@ -129,6 +129,11 @@ All changes land on `main` through pull requests. Branch per change (`feat/…`,
 push, open a PR, merge once checks pass. The [CI workflow](.github/workflows/ci.yml) runs the same hooks and
 the full test suite on every PR.
 
+PRs that touch the dbt project also run [dbt CI](.github/workflows/dbt_ci.yml): SQLFluff, then `dbt build` of the
+whole project (models, tests, `dbt_project_evaluator`) into a per-PR schema, `ANALYTICS_DEV.DBT_PR_<number>`,
+as the `DBT_CI_SVC` service user. The schema is rebuilt from empty on every run and dropped when the PR closes
+([cleanup](.github/workflows/dbt_ci_cleanup.yml)). Setup: [GitHub Actions settings](snowflake/README.md#github-actions-settings).
+
 After cloning, install the git hooks:
 
 ```bash

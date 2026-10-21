@@ -40,7 +40,7 @@ jobs:
         run: uv run pre-commit run --all-files --show-diff-on-failure
         env:
           # no-commit-to-branch: merges to main run here on main; the guard is for local commits.
-          # sqlfluff-lint: compiles through dbt, so it needs Snowflake credentials; moves to the dbt CI job.
+          # sqlfluff-lint: compiles through dbt, so it needs Snowflake credentials; runs in dbt_ci.yml instead.
           SKIP: no-commit-to-branch,sqlfluff-lint
 
       - name: Test
