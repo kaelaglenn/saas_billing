@@ -1,0 +1,5 @@
+plan,billing_frequency,unit_price_cents
+pro,monthly,1900
+pro,annual,20520
+premium,monthly,2900
+premium,annual,31320

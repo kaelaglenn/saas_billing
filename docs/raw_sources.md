@@ -76,8 +76,10 @@ into days or months: billing periods start at 00:00 UTC, which is 7 or 8 p.m. ET
   ended. Incremental models filtering on `ingested_at` need a lookback window.
 - **Scheduled changes**: 4,556 `plan_updated` (decreases, downgrades, frequency switches) and 2,495 `cancelled`
   events have `effective_at` later than `requested_at`. 488 take effect after the data window.
-- **Changes that never happened**: 34 scheduled events (30 `plan_updated`, 4 `cancelled`) have `effective_at`
-  after the subscription lapsed. They stay in the log but never took effect.
+- **Changes that never happened**: scheduled events stay in the log even when they never took effect. 34 have
+  `effective_at` after the subscription lapsed (30 `plan_updated`, 4 `cancelled`), and 146 more `plan_updated`
+  events were scheduled for the same period end as a cancellation, which drops them (no renewal happens). See
+  `int_subscription_change_requests.outcome`.
 - `attributes` is a JSON string whose keys depend on `event_type`. Missing values are JSON `null`, which is not
   SQL `NULL`: `parse_json(attributes):x is not null` is true for them. Use `is_null_value()`, or cast first.
 - 34 `subscription_imported` rows (33 subscriptions; one row is a retried-webhook copy) carry a pending
