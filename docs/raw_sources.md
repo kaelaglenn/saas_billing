@@ -80,8 +80,8 @@ into days or months: billing periods start at 00:00 UTC, which is 7 or 8 p.m. ET
   after the subscription lapsed. They stay in the log but never took effect.
 - `attributes` is a JSON string whose keys depend on `event_type`. Missing values are JSON `null`, which is not
   SQL `NULL`: `parse_json(attributes):x is not null` is true for them. Use `is_null_value()`, or cast first.
-- 34 `subscription_imported` events carry a pending `cancel_requested_at` in `attributes`, the only record of
-  cancellations requested before the cutover.
+- 34 `subscription_imported` rows (33 subscriptions; one row is a retried-webhook copy) carry a pending
+  `cancel_requested_at` in `attributes`, the only record of cancellations requested before the cutover.
 - Genuine look-alikes to keep: 60 seat increases repeated by the same account on the same day, with different
   `requested_at` values and separate proration invoices.
 

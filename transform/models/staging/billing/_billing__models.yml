@@ -209,3 +209,251 @@ models:
           Renamed from service_period_start.
       - name: service_period_end_at
         description: End of the period charged (UTC). Renamed from service_period_end.
+
+  - name: stg_billing__subscription_events
+    description: >
+      One row per subscription event (append-only log), with retried-webhook duplicates removed (the first-ingested
+      copy is kept) and attributes flattened into typed columns. Flattened columns are null for event types that
+      don't carry them; trial_expired events have no attributes at all. Late-arriving events (ingested 1-5 days
+      after requested_at) are kept. Scheduled changes have effective_at after requested_at, and some never took
+      effect because the subscription lapsed first.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [subscription_id, event_type, requested_at]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "effective_at >= requested_at and ingested_at >= requested_at"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "subscription_amount_cents is not null"
+          config:
+            where: "event_type not in ('trial_started', 'trial_expired')"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              plan is not null and seats is not null and billing_frequency is not null and payment_method is not null
+              and current_period_start_at is not null and current_period_end_at > current_period_start_at
+          config:
+            where: "event_type in ('subscription_imported', 'subscription_started', 'renewed')"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "from_seats is not null and to_seats is not null and seat_delta = to_seats - from_seats"
+          config:
+            where: "change_type = 'seats'"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "from_plan is not null and to_plan is not null"
+          config:
+            where: "change_type = 'plan'"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "from_billing_frequency is not null and to_billing_frequency is not null"
+          config:
+            where: "change_type = 'billing_frequency'"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "cancel_reason is not null"
+          config:
+            where: "event_type = 'cancelled'"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "lapse_reason is not null and lapse_invoice_id is not null"
+          config:
+            where: "event_type = 'lapsed'"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_reactivation is not null"
+          config:
+            where: "event_type = 'subscription_started'"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "previous_subscription_id is not null"
+          config:
+            where: "is_reactivation"
+    columns:
+      - name: event_id
+        description: Primary key (surrogate). For duplicated events, the original event_id is kept.
+        data_tests:
+          - unique
+          - not_null
+      - name: subscription_id
+        description: The subscription the event belongs to.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_billing__subscriptions')
+                field: subscription_id
+      - name: account_id
+        description: The customer.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_billing__accounts')
+                field: account_id
+      - name: previous_subscription_id
+        description: For reactivations, the account's previous (churned) subscription.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_billing__subscriptions')
+                field: subscription_id
+      - name: lapse_invoice_id
+        description: For lapsed events, the unpaid invoice that caused the lapse. From attributes.invoice_id.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_billing__invoices')
+                field: invoice_id
+      - name: event_type
+        description: What happened.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["trial_started", "trial_expired", "subscription_started", "subscription_imported",
+                         "plan_updated", "renewed", "cancelled", "lapsed"]
+      - name: change_type
+        description: For plan_updated, the one dimension that changed.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["seats", "plan", "billing_frequency"]
+      - name: change_direction
+        description: >
+          For plan_updated. increase and upgrade take effect immediately; decrease, downgrade, and switch
+          (billing frequency) take effect at the next renewal. From attributes.direction.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["increase", "decrease", "upgrade", "downgrade", "switch"]
+      - name: plan
+        description: Plan on snapshot events (imported, started, renewed) and trial_started.
+      - name: billing_frequency
+        description: Billing frequency on snapshot events and trial_started.
+      - name: payment_method
+        description: Payment method on snapshot events.
+      - name: from_plan
+        description: For plan changes, the plan before.
+      - name: to_plan
+        description: For plan changes, the plan after.
+      - name: from_billing_frequency
+        description: For frequency switches, the frequency before.
+      - name: to_billing_frequency
+        description: For frequency switches, the frequency after.
+      - name: cancel_reason
+        description: >
+          The customer's cancellation reason: from attributes.reason on cancelled events, or attributes.cancel_reason
+          on imported subscriptions that had a cancellation pending at the Jan 1, 2024 cutover.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["price", "switched_tool", "no_longer_needed", "company_closed", "missing_features"]
+      - name: lapse_reason
+        description: Why a subscription lapsed. From attributes.reason on lapsed events.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["payment_failed", "invoice_unpaid"]
+      - name: subscription_amount_cents
+        description: >
+          Per-period amount once the event takes effect. Null for trial events. For scheduled changes it's the
+          amount projected when requested; renewed events carry the realized amount.
+      - name: seats
+        description: Seat count on snapshot events and trial_started.
+      - name: from_seats
+        description: For seat changes, seats before (for decreases, as projected at request time).
+      - name: to_seats
+        description: For seat changes, seats after (for decreases, as projected at request time).
+      - name: seat_delta
+        description: >
+          For seat changes, the signed change. A scheduled decrease applies at renewal against the seat count then,
+          so seats at any instant = the last snapshot event's seats plus deltas that took effect since.
+      - name: is_reactivation
+        description: On subscription_started, whether this is a returning customer's new subscription.
+      - name: requested_at
+        description: When the customer or system acted (UTC).
+      - name: effective_at
+        description: >
+          When the event takes effect (UTC). Later than requested_at for scheduled changes and cancellations, which
+          take effect at the period end. Some never took effect because the subscription lapsed first.
+      - name: ingested_at
+        description: When the row landed in the warehouse (UTC). Usually seconds after requested_at; 1-5 days for late arrivals.
+      - name: current_period_start_at
+        description: Billing period start on snapshot events.
+      - name: current_period_end_at
+        description: Billing period end on snapshot events.
+      - name: trial_ends_at
+        description: On trial_started, when the trial ends if not converted.
+      - name: subscription_started_at
+        description: On subscription_imported, the subscription's original (pre-2024) paid start. From attributes.started_at.
+      - name: cancel_requested_at
+        description: On subscription_imported, when a cancellation pending at the cutover was requested.
+      - name: attributes_json
+        description: The full attributes object, parsed as VARIANT. Kept for debugging; use the typed columns.
+
+  - name: stg_billing__payments
+    description: >
+      One row per card payment attempt or received invoice payment, with double-loaded rows removed. Only succeeded
+      rows are money received; failed attempts record the amount attempted. Invoices can have several succeeded
+      payments (partial payments).
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(payment_status = 'failed') = (failure_reason is not null)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(payment_method = 'card') = (attempt_number is not null)"
+    columns:
+      - name: payment_id
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: invoice_id
+        description: The invoice paid.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_billing__invoices')
+                field: invoice_id
+      - name: account_id
+        description: The customer.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_billing__accounts')
+                field: account_id
+      - name: payment_method
+        description: card, cheque, or bank_transfer. Renamed from method.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["card", "cheque", "bank_transfer"]
+      - name: payment_status
+        description: succeeded or failed. Renamed from status.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["succeeded", "failed"]
+      - name: failure_reason
+        description: Set exactly when payment_status is failed.
+      - name: amount_cents
+        description: Amount received (succeeded) or attempted (failed).
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 1
+      - name: attempt_number
+        description: Card attempts only (1-3, retries weekly); null for invoice payments.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 1
+                max_value: 3
+      - name: attempted_at
+        description: When the attempt was made or the payment received (UTC).
