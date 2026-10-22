@@ -4,6 +4,7 @@ profile: saas_billing    # connection settings live in profiles.yml, next to thi
 
 model-paths: ["models"]
 macro-paths: ["macros"]
+seed-paths: ["seeds"]
 test-paths: ["tests"]
 clean-targets: ["target", "dbt_packages"]
 
@@ -35,5 +36,10 @@ models:
           +enabled: false
 
 seeds:
+  saas_billing:         # small, hand-maintained reference data
+    +schema: seeds
+    plan_prices:
+      +column_types:
+        unit_price_cents: number(38, 0)
   dbt_project_evaluator:
     +enabled: "{{ target.name != 'prod' }}"

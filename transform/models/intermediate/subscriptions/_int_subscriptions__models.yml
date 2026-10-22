@@ -1,0 +1,353 @@
+models:
+
+  - name: int_invoice_delinquency_periods
+    description: >
+      One row per invoice that went overdue, with when and how the overdue period ended. Card invoices become
+      overdue at the first failed charge attempt; invoice-payment invoices (Net 30) become overdue at due_at if not
+      fully paid by then.
+
+      An overdue period ends in one of two ways. Paid: a later charge attempt succeeds (card) or cumulative
+      payments cover the amount due (invoice). Written off: dunning runs out, meaning the third and final card
+      attempt fails (14 days after the first failure) or an invoice reaches 60 days past due; in both cases the
+      subscription lapses at that moment and the invoice becomes uncollectible. An unpaid invoice is also written
+      off if its subscription lapses over a different invoice first. The dunning-based rule also covers
+      subscriptions that were already cancelled, which have no lapse event.
+
+      Due dates and dunning deadlines after the data's last billing activity (the watermark) haven't happened yet,
+      so those invoices aren't overdue or written off yet. ended_at is null for invoices still overdue at the end
+      of the data.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "ended_at > delinquent_from"
+          config:
+            where: "ended_at is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not (paid_at is not null and written_off_at is not null)"
+    columns:
+      - name: invoice_id
+        description: Primary key; the overdue invoice.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_billing__invoices')
+                field: invoice_id
+      - name: subscription_id
+        description: The subscription the invoice bills.
+        data_tests:
+          - not_null
+      - name: account_id
+        description: The customer.
+      - name: payment_method
+        description: card or invoice; determines the overdue rule.
+      - name: delinquent_from
+        description: First failed card attempt, or due_at for invoice payment.
+        data_tests:
+          - not_null
+      - name: paid_at
+        description: When the invoice was fully paid. Null if it wasn't.
+      - name: written_off_at
+        description: When the invoice was written off (dunning exhausted, or the subscription lapsed). Null if it wasn't.
+      - name: ended_at
+        description: When the overdue period ended, paid or written off. Null if still overdue at the end of the data.
+      - name: end_reason
+        description: paid or written_off; null if still overdue at the end of the data.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["paid", "written_off"]
+
+  - name: int_subscription_past_due_periods
+    description: >
+      One row per continuous period in which a subscription had at least one overdue invoice. Overlapping invoice
+      delinquencies are merged (gaps-and-islands). An invoice stops counting once it's paid or written off.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [subscription_id, past_due_period_number]
+      - dbt_utils.mutually_exclusive_ranges:
+          arguments:
+            lower_bound_column: past_due_from
+            upper_bound_column: coalesce(past_due_until, '9999-12-31'::timestamp_tz)
+            partition_by: subscription_id
+            gaps: required
+    columns:
+      - name: subscription_id
+        description: The subscription.
+        data_tests:
+          - not_null
+      - name: account_id
+        description: The customer.
+      - name: past_due_period_number
+        description: 1, 2, 3, ... in time order within the subscription.
+      - name: past_due_from
+        description: When the subscription first had an overdue invoice in this period.
+        data_tests:
+          - not_null
+      - name: past_due_until
+        description: When the last overdue invoice in this period was paid or written off. Null if still overdue at the end of the data.
+
+  - name: int_data_watermark
+    description: >
+      One row: data_as_of, the latest recorded business activity (invoice issued, payment attempted, or
+      customer/system action). Anything scheduled after it hasn't happened yet in the data. ingested_at is
+      excluded because late-arriving rows land after the moment they describe.
+    columns:
+      - name: data_as_of
+        description: The latest moment the data covers (UTC). One row by design.
+        data_tests:
+          - unique
+          - not_null
+
+  - name: int_subscription_change_requests
+    description: >
+      One row per customer-initiated change: seat increases and decreases, plan upgrades and downgrades, billing
+      frequency switches, and cancellations (including cancellations requested before the Jan 1, 2024 cutover,
+      which appear only on subscription_imported events). Keeps both when the change was requested and when it
+      was due to take effect, plus ingested_at for point-in-time use (e.g. churn features).
+
+      outcome: applied (immediately, or at the renewal it was scheduled for; a renewal at effective_at is the
+      evidence), pending (effective after the data watermark), or never_took_effect (the subscription lapsed or
+      was cancelled first; a cancellation drops changes scheduled for the same period end).
+    columns:
+      - name: change_request_id
+        description: Primary key. The event_id of the event recording the request.
+        data_tests:
+          - unique
+          - not_null
+      - name: subscription_id
+        description: The subscription.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_billing__subscriptions')
+                field: subscription_id
+      - name: account_id
+        description: The customer.
+      - name: request_type
+        description: What was requested.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["seat_increase", "seat_decrease", "plan_upgrade", "plan_downgrade", "frequency_switch",
+                         "cancellation"]
+      - name: from_plan
+        description: For plan changes, the plan before.
+      - name: to_plan
+        description: For plan changes, the plan after.
+      - name: from_billing_frequency
+        description: For frequency switches, the frequency before.
+      - name: to_billing_frequency
+        description: For frequency switches, the frequency after.
+      - name: seat_delta
+        description: For seat changes, the signed change.
+      - name: cancel_reason
+        description: For cancellations, the customer's reason.
+      - name: is_scheduled
+        description: True when the change takes effect after it was requested (decreases, downgrades, switches, cancellations).
+      - name: outcome
+        description: applied, pending, or never_took_effect.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["applied", "pending", "never_took_effect"]
+      - name: requested_at
+        description: When the customer made the request (UTC).
+      - name: effective_at
+        description: When the change took or will take effect (UTC).
+      - name: ingested_at
+        description: When the request landed in the warehouse (UTC). Use for point-in-time correct features.
+      - name: source_event_type
+        description: plan_updated, cancelled, or subscription_imported (cutover cancellations).
+
+  - name: int_subscription_state_changes
+    description: >
+      One row per moment a subscription's effective state changes, carrying only what changed (event sourcing
+      input for int_subscription_history). Checkpoints (trial_started and the snapshot events) carry the full
+      state; immediate rows carry a seat_delta or new plan; past_due rows carry +1/-1; ending rows carry the final
+      lifecycle status. Scheduled changes aren't rows because the renewal checkpoint already includes them.
+      sort_order breaks ties at the same instant: checkpoint, immediate, past_due, ending.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_id, change_detail]
+    columns:
+      - name: subscription_id
+        description: The subscription.
+        data_tests:
+          - not_null
+      - name: account_id
+        description: The customer.
+      - name: changed_at
+        description: When the change took effect (UTC).
+        data_tests:
+          - not_null
+      - name: sort_order
+        description: Order of rows at the same changed_at.
+      - name: change_kind
+        description: checkpoint, immediate, past_due, or ending.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["checkpoint", "immediate", "past_due", "ending"]
+      - name: change_detail
+        description: The event type, request type, or past_due_started / past_due_ended.
+      - name: lifecycle_status
+        description: Set on checkpoints (trialing / active) and endings (cancelled / lapsed / trial_expired).
+      - name: plan
+        description: Set on checkpoints and plan upgrades.
+      - name: seats
+        description: Set on checkpoints.
+      - name: billing_frequency
+        description: Set on checkpoints.
+      - name: seat_delta
+        description: Set on immediate seat increases.
+      - name: past_due_change
+        description: +1 when a past-due period starts, -1 when it ends.
+      - name: source_id
+        description: The event_id, change_request_id, or subscription_id-period number the row came from.
+
+  - name: int_subscription_history
+    description: >
+      SCD Type 2 history of each subscription's effective state: one row per period during which status, plan,
+      seats, and billing frequency stayed the same, over [valid_from, valid_to). Rebuilt by replaying
+      int_subscription_state_changes: plan and frequency carry forward, seats are the last checkpoint's seats plus
+      immediate seat deltas since, and status is past_due while the subscription is active with an overdue invoice.
+      Ended subscriptions are cancelled, lapsed, or trial_expired, never past_due. Shows effective state only;
+      requested-but-not-yet-effective changes are in int_subscription_change_requests.
+    data_tests:
+      - dbt_utils.mutually_exclusive_ranges:
+          arguments:
+            lower_bound_column: valid_from
+            upper_bound_column: coalesce(valid_to, '9999-12-31'::timestamp_tz)
+            partition_by: subscription_id
+            gaps: not_allowed
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "valid_to > valid_from"
+          config:
+            where: "valid_to is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "mrr_cents = 0"
+          config:
+            where: "subscription_status not in ('active', 'past_due')"
+    columns:
+      - name: subscription_history_id
+        description: Primary key; surrogate key of subscription_id and valid_from.
+        data_tests:
+          - unique
+          - not_null
+      - name: subscription_id
+        description: The subscription.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_billing__subscriptions')
+                field: subscription_id
+          - unique:
+              config:
+                where: "is_current"
+      - name: account_id
+        description: The customer.
+      - name: subscription_status
+        description: Effective status during the period.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["trialing", "active", "past_due", "cancelled", "lapsed", "trial_expired"]
+      - name: plan
+        description: Effective plan during the period.
+        data_tests:
+          - not_null
+      - name: billing_frequency
+        description: Effective billing frequency during the period.
+        data_tests:
+          - not_null
+      - name: seats
+        description: Effective seat count during the period.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 1
+      - name: mrr_cents
+        description: >
+          Monthly recurring revenue during the period: seats x monthly price, or seats x annual price / 12. Zero
+          unless active or past_due (past-due subscriptions still count until they lapse). Both annual prices divide
+          evenly by 12; a future price that doesn't would need a rounding rule.
+        data_tests:
+          - not_null
+      - name: valid_from
+        description: Start of the period (UTC), inclusive.
+        data_tests:
+          - not_null
+      - name: valid_to
+        description: End of the period (UTC), exclusive. Null for the current period.
+      - name: is_current
+        description: True for the subscription's latest period.
+
+  - name: int_subscription_checkpoint_reconciliation
+    description: >
+      One row per renewal, reconciling the state the renewal recorded (actual) with the state expected from the
+      previous checkpoint plus every change in between: immediate changes effective after the previous checkpoint
+      up to this renewal, and scheduled changes effective at this renewal. Also checks the renewal amount equals
+      seats x list price. Built from events and change requests, independently of int_subscription_history, so a
+      mismatch points to missed or double-counted events or wrong change logic. Query rows where not is_reconciled
+      to investigate.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: checkpoint_reconciliation_seats_match
+          arguments:
+            expression: "expected_seats = actual_seats"
+      - dbt_utils.expression_is_true:
+          name: checkpoint_reconciliation_plan_matches
+          arguments:
+            expression: "expected_plan = actual_plan"
+      - dbt_utils.expression_is_true:
+          name: checkpoint_reconciliation_frequency_matches
+          arguments:
+            expression: "expected_billing_frequency = actual_billing_frequency"
+      - dbt_utils.expression_is_true:
+          name: checkpoint_reconciliation_amount_matches
+          arguments:
+            expression: "expected_amount_cents = actual_amount_cents"
+    columns:
+      - name: renewal_event_id
+        description: Primary key; the renewed event.
+        data_tests:
+          - unique
+          - not_null
+      - name: subscription_id
+        description: The subscription.
+      - name: renewed_at
+        description: When the renewal happened (UTC).
+      - name: previous_checkpoint_at
+        description: The previous snapshot event (import, start, or renewal).
+      - name: changes_applied
+        description: How many plan, seat, and frequency changes fall between the two checkpoints.
+      - name: expected_seats
+        description: Previous checkpoint's seats plus seat deltas in the window.
+      - name: actual_seats
+        description: Seats the renewal recorded.
+      - name: expected_plan
+        description: Latest plan change in the window, otherwise the previous plan.
+      - name: actual_plan
+        description: Plan the renewal recorded.
+      - name: expected_billing_frequency
+        description: A frequency switch scheduled for this renewal, otherwise the previous frequency.
+      - name: actual_billing_frequency
+        description: Frequency the renewal recorded.
+      - name: expected_amount_cents
+        description: Recorded seats x list price for the recorded plan and frequency.
+      - name: actual_amount_cents
+        description: Amount the renewal recorded.
+      - name: is_reconciled
+        description: True when all four comparisons match.
