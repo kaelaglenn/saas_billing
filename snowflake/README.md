@@ -23,6 +23,9 @@ Production is only ever built by CI. Your own user can't write to `ANALYTICS`, w
 Each workload has its own X-Small warehouse that suspends after 60 seconds idle, and all three share a
 resource monitor capped at 20 credits a month.
 
+The account's default `TIMEZONE` is UTC (Snowflake's default is America/Los_Angeles), so plain date strings and
+`current_timestamp()` mean UTC in every tool.
+
 ## Setup
 
 1. **Create a trial account** at [signup.snowflake.com](https://signup.snowflake.com): Enterprise edition, any
