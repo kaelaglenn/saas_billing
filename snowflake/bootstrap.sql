@@ -55,6 +55,12 @@ ALTER WAREHOUSE LOADING_WH SET RESOURCE_MONITOR = SAAS_BILLING_MONITOR;
 ALTER WAREHOUSE TRANSFORMING_WH SET RESOURCE_MONITOR = SAAS_BILLING_MONITOR;
 ALTER WAREHOUSE REPORTING_WH SET RESOURCE_MONITOR = SAAS_BILLING_MONITOR;
 
+-- ------------------------------------------------------------ account defaults (ACCOUNTADMIN)
+-- Every session defaults to UTC instead of Snowflake's America/Los_Angeles, so plain date strings, NTZ -> TZ
+-- casts, and current_timestamp() mean UTC in every tool. Stored TIMESTAMP_TZ values are unaffected. Users or
+-- sessions can still override this, so models shouldn't depend on it (see the naive_to_utc macro).
+ALTER ACCOUNT SET TIMEZONE = 'UTC';
+
 -- --------------------------------------------------------------------- roles (USERADMIN)
 USE ROLE USERADMIN;
 
