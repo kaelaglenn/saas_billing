@@ -10,6 +10,13 @@ clean-targets: ["target", "dbt_packages"]
 
 flags:
   send_anonymous_usage_stats: false
+  # dbt_project_evaluator's documented exceptions mechanism has the package ref this project's
+  # dbt_project_evaluator_exceptions seed, which dbt reports once per evaluator model on every full parse
+  # (event PackageNodeDependsOnRootProjectNode). Silence only that event; revisit when upgrading dbt or the
+  # evaluator (dbt may later default to searching the package first, which would bypass our exceptions seed).
+  warn_error_options:
+    silence:
+      - PackageNodeDependsOnRootProjectNode
 
 vars:
   # The business reports in Eastern Time: months, month-end MRR, and anything bucketed by date use this timezone.
@@ -29,6 +36,10 @@ models:
     marts:              # final models people query
       +materialized: table
       +schema: marts
+      # Published interface: column names and types are declared in YAML and enforced at build time, so a change
+      # that would break consumers fails the build instead of silently changing a table.
+      +contract:
+        enforced: true
 
   # Audits the project's structure (naming, DAG shape, test and doc coverage). Dev and CI only, never prod.
   dbt_project_evaluator:
@@ -46,5 +57,11 @@ seeds:
     plan_prices:
       +column_types:
         unit_price_cents: number(38, 0)
+    # Documented exceptions to dbt_project_evaluator findings; only needed where the evaluator runs.
+    dbt_project_evaluator_exceptions:
+      +enabled: "{{ target.name != 'prod' }}"
   dbt_project_evaluator:
     +enabled: "{{ target.name != 'prod' }}"
+    # replaced by this project's own exceptions seed
+    dbt_project_evaluator_exceptions:
+      +enabled: false

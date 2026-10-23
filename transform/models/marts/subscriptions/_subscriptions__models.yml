@@ -1,0 +1,213 @@
+models:
+
+  - name: fct_subscription_months
+    description: >
+      Periodic snapshot: one row per subscription per reporting month-end, for each month-end the subscription is
+      live or trialing, plus the first month-end after it ends. MRR is the subscription's MRR at the month-end
+      cutoff; previous_mrr_cents is its MRR at the previous month-end (0 if it had no row then).
+
+      movement_type classifies mrr_change_cents: new (first paid month), reactivation (a returning account's new
+      subscription), expansion, contraction, churn (MRR went to zero), unchanged, none (no MRR either side, e.g.
+      trial months), or opening (the opening balance month, which has no movements). Movements are classified by
+      the MRR change alone; has_seat_change, has_plan_change, and has_frequency_change explain it. For example a
+      monthly-to-annual switch is a contraction (the annual discount lowers MRR) with has_frequency_change.
+      Signed: contraction and churn are negative.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [subscription_id, month_start_date]
+      - dbt_utils.expression_is_true:
+          name: fct_subscription_months_movement_signs
+          arguments:
+            expression: >
+              movement_type = 'opening'
+              or (movement_type in ('new', 'reactivation', 'expansion') and mrr_change_cents > 0)
+              or (movement_type in ('contraction', 'churn') and mrr_change_cents < 0)
+              or (movement_type in ('unchanged', 'none') and mrr_change_cents = 0)
+      - dbt_utils.expression_is_true:
+          name: fct_subscription_months_churn_type_only_on_churn
+          arguments:
+            expression: "(movement_type = 'churn') = (churn_type is not null)"
+    columns:
+      - name: subscription_month_id
+        description: Primary key; surrogate key of subscription_id and month_start_date.
+        data_type: varchar
+        data_tests:
+          - unique
+          - not_null
+      - name: subscription_id
+        description: The subscription.
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: account_id
+        description: The customer.
+        data_type: varchar
+      - name: month_start_date
+        description: The reporting month.
+        data_type: date
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_reporting_months')
+                field: month_start_date
+      - name: month_end_date
+        description: Last day of the reporting month.
+        data_type: date
+      - name: subscription_status
+        description: Status at the month-end cutoff.
+        data_type: varchar
+      - name: plan
+        description: Plan at the month-end cutoff.
+        data_type: varchar
+      - name: billing_frequency
+        description: Billing frequency at the month-end cutoff.
+        data_type: varchar
+      - name: seats
+        description: Seats at the month-end cutoff.
+        data_type: number(38, 0)
+      - name: mrr_cents
+        description: MRR at the month-end cutoff; zero unless active or past_due.
+        data_type: number(38, 0)
+      - name: previous_mrr_cents
+        description: MRR at the previous month-end; 0 if the subscription had no row then.
+        data_type: number(38, 0)
+      - name: mrr_change_cents
+        description: mrr_cents - previous_mrr_cents. Negative for contraction and churn.
+        data_type: number(38, 0)
+      - name: movement_type
+        description: What the MRR change represents.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["opening", "new", "reactivation", "expansion", "contraction", "churn", "unchanged", "none"]
+      - name: churn_type
+        description: For churn rows, voluntary (cancelled) or involuntary (lapsed); null otherwise.
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["voluntary", "involuntary"]
+      - name: has_seat_change
+        description: Seats differ from the previous month-end.
+        data_type: boolean
+      - name: has_plan_change
+        description: Plan differs from the previous month-end.
+        data_type: boolean
+      - name: has_frequency_change
+        description: Billing frequency differs from the previous month-end.
+        data_type: boolean
+      - name: is_reactivation
+        description: The subscription is a returning account's new subscription.
+        data_type: boolean
+      - name: is_month_closed
+        description: False for the provisional latest month.
+        data_type: boolean
+      - name: is_activity_complete
+        description: False for the opening and provisional months.
+        data_type: boolean
+
+  - name: fct_mrr_bridge
+    description: >
+      MRR bridge (roll-forward, or MRR walk): one row per reporting month explaining how MRR moved from the
+      previous month-end to this one: ending = starting + new + expansion + reactivation + contraction + churned.
+      Movements are signed (contraction and churned negative) and sum to net_new_mrr_cents. Subscription counts
+      follow the same flow for paying subscriptions. The opening balance month has an ending balance only; its
+      starting balance and movements are null because activity before the data starts is unknown. The latest
+      month may be provisional (is_month_closed = false).
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: fct_mrr_bridge_mrr_balances
+          arguments:
+            expression: "starting_mrr_cents + net_new_mrr_cents = ending_mrr_cents"
+          config:
+            where: "not is_opening_balance"
+      - dbt_utils.expression_is_true:
+          name: fct_mrr_bridge_subscription_counts_balance
+          arguments:
+            expression: >
+              starting_subscriptions + new_subscriptions + reactivated_subscriptions - churned_subscriptions
+              = ending_subscriptions
+          config:
+            where: "not is_opening_balance"
+      - dbt_utils.expression_is_true:
+          name: fct_mrr_bridge_churn_split_adds_up
+          arguments:
+            expression: >
+              voluntarily_churned_subscriptions + involuntarily_churned_subscriptions = churned_subscriptions
+          config:
+            where: "not is_opening_balance"
+    columns:
+      - name: month_start_date
+        description: Primary key. The reporting month.
+        data_type: date
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_reporting_months')
+                field: month_start_date
+      - name: month_end_date
+        description: Last day of the reporting month.
+        data_type: date
+      - name: month_label
+        description: The month as YYYY-MM.
+        data_type: varchar
+      - name: starting_mrr_cents
+        description: MRR at the previous month-end. Null for the opening month.
+        data_type: number(38, 0)
+      - name: new_mrr_cents
+        description: MRR from subscriptions paying for the first time this month.
+        data_type: number(38, 0)
+      - name: expansion_mrr_cents
+        description: Increases on subscriptions already paying.
+        data_type: number(38, 0)
+      - name: reactivation_mrr_cents
+        description: MRR from returning accounts' new subscriptions.
+        data_type: number(38, 0)
+      - name: contraction_mrr_cents
+        description: Decreases on subscriptions still paying (negative).
+        data_type: number(38, 0)
+      - name: churned_mrr_cents
+        description: MRR lost from subscriptions that stopped paying (negative).
+        data_type: number(38, 0)
+      - name: net_new_mrr_cents
+        description: Sum of the movements; ending minus starting.
+        data_type: number(38, 0)
+      - name: ending_mrr_cents
+        description: MRR at this month-end.
+        data_type: number(38, 0)
+      - name: starting_subscriptions
+        description: Paying subscriptions at the previous month-end. Null for the opening month.
+        data_type: number(38, 0)
+      - name: new_subscriptions
+        description: Subscriptions paying for the first time this month.
+        data_type: number(38, 0)
+      - name: reactivated_subscriptions
+        description: Returning accounts' new subscriptions paying this month.
+        data_type: number(38, 0)
+      - name: churned_subscriptions
+        description: Subscriptions that stopped paying this month.
+        data_type: number(38, 0)
+      - name: voluntarily_churned_subscriptions
+        description: Churned by cancellation.
+        data_type: number(38, 0)
+      - name: involuntarily_churned_subscriptions
+        description: Churned by lapsing (payment failure or unpaid invoice).
+        data_type: number(38, 0)
+      - name: ending_subscriptions
+        description: Paying subscriptions (active or past_due) at this month-end.
+        data_type: number(38, 0)
+      - name: is_opening_balance
+        description: True for the opening month, which has no starting balance or movements.
+        data_type: boolean
+      - name: is_month_closed
+        description: False for the provisional latest month.
+        data_type: boolean
+      - name: is_activity_complete
+        description: False for the opening and provisional months.
+        data_type: boolean
