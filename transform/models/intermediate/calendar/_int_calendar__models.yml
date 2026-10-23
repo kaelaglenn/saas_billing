@@ -1,0 +1,39 @@
+models:
+
+  - name: int_reporting_months
+    description: >
+      One row per reporting month in the reporting timezone (var reporting_timezone, America/New_York), from the
+      month of the first data (December 2023: the Jan 1, 2024 00:00 UTC cutover is Dec 31 evening in ET) through
+      the month of the data watermark. month_started_at and month_ended_at are the UTC instants of local midnight
+      at the month's start and end; month_ended_at is the month-end cutoff (exclusive), 04:00 or 05:00 UTC
+      depending on daylight time.
+
+      is_month_closed: the cutoff is at or before the watermark, so the month-end state is fully known. False
+      for the latest month while it's provisional (month-to-date).
+      is_activity_complete: the whole month is in the data, so activity during it (new, churn, ...) is complete.
+      False for the first month (an opening balance) and any month not yet closed.
+    data_tests:
+      - dbt_utils.mutually_exclusive_ranges:
+          arguments:
+            lower_bound_column: month_started_at
+            upper_bound_column: month_ended_at
+            gaps: not_allowed
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "hour(month_started_at) in (4, 5) and hour(month_ended_at) in (4, 5)"
+    columns:
+      - name: month_start_date
+        description: Primary key. First day of the month in the reporting timezone.
+        data_tests:
+          - unique
+          - not_null
+      - name: month_end_date
+        description: Last day of the month in the reporting timezone.
+      - name: month_started_at
+        description: Local midnight on the first of the month, as a UTC instant (inclusive).
+      - name: month_ended_at
+        description: Local midnight on the first of the next month, as a UTC instant; the month-end cutoff (exclusive).
+      - name: is_month_closed
+        description: True when the month-end cutoff is at or before the data watermark.
+      - name: is_activity_complete
+        description: True when the whole month is covered by the data (excludes the opening-balance and provisional months).

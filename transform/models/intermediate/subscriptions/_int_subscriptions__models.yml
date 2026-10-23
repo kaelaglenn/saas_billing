@@ -92,10 +92,15 @@ models:
 
   - name: int_data_watermark
     description: >
-      One row: data_as_of, the latest recorded business activity (invoice issued, payment attempted, or
-      customer/system action). Anything scheduled after it hasn't happened yet in the data. ingested_at is
-      excluded because late-arriving rows land after the moment they describe.
+      One row: the time range the data covers. data_starts_at and data_as_of are the earliest and latest recorded
+      business activity (invoice issued, payment attempted, or customer/system action). Anything scheduled after
+      data_as_of hasn't happened yet in the data. ingested_at is excluded because late-arriving rows land after
+      the moment they describe.
     columns:
+      - name: data_starts_at
+        description: The earliest moment the data covers (UTC).
+        data_tests:
+          - not_null
       - name: data_as_of
         description: The latest moment the data covers (UTC). One row by design.
         data_tests:
@@ -351,3 +356,71 @@ models:
         description: Amount the renewal recorded.
       - name: is_reconciled
         description: True when all four comparisons match.
+
+  - name: int_subscription_month_end_states
+    description: >
+      Each subscription's effective state and MRR at each reporting month-end: the int_subscription_history row
+      in effect at the month's cutoff (int_reporting_months.month_ended_at). One row per month-end the
+      subscription is live (active, past_due) or trialing, plus the first month-end after it ends, so the month a
+      subscription churned or a trial expired shows its ending status with zero MRR. MRR here is a stock
+      (point-in-time balance); movements between months are derived in marts. Carries the month's
+      is_month_closed and is_activity_complete flags so provisional and opening-balance months can be told apart.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [subscription_id, month_start_date]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "mrr_cents = 0"
+          config:
+            where: "subscription_status not in ('active', 'past_due')"
+    columns:
+      - name: subscription_month_id
+        description: Primary key; surrogate key of subscription_id and month_start_date.
+        data_tests:
+          - unique
+          - not_null
+      - name: subscription_id
+        description: The subscription.
+        data_tests:
+          - not_null
+      - name: account_id
+        description: The customer.
+      - name: subscription_history_id
+        description: The history row in effect at the cutoff (row-level lineage).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int_subscription_history')
+                field: subscription_history_id
+      - name: month_start_date
+        description: The reporting month (first day, reporting timezone).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int_reporting_months')
+                field: month_start_date
+      - name: month_end_date
+        description: Last day of the reporting month.
+      - name: subscription_status
+        description: Status at the month-end cutoff.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["trialing", "active", "past_due", "cancelled", "lapsed", "trial_expired"]
+      - name: plan
+        description: Plan at the month-end cutoff.
+      - name: billing_frequency
+        description: Billing frequency at the month-end cutoff.
+      - name: seats
+        description: Seats at the month-end cutoff.
+      - name: mrr_cents
+        description: MRR at the month-end cutoff; zero unless active or past_due.
+      - name: is_month_closed
+        description: From int_reporting_months; false while the month is provisional.
+      - name: is_activity_complete
+        description: From int_reporting_months; false for the opening-balance and provisional months.
+      - name: month_ended_at
+        description: The month-end cutoff (UTC) the state was taken at.
