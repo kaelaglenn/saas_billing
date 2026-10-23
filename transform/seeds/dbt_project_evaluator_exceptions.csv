@@ -1,0 +1,2 @@
+fct_name,column_name,id_to_exclude,comment
+fct_rejoining_of_upstream_concepts,parent,dim_reporting_months,"The reporting calendar is a conformed dimension. Facts built from it (e.g. fct_subscription_months) and rollups of those facts (e.g. fct_mrr_bridge) both join it directly for month labels and completeness flags; this is the intended star-schema pattern, not a redundant dependency."
