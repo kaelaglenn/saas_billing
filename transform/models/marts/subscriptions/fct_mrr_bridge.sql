@@ -22,7 +22,7 @@ subscription_months as (
 monthly as (
 
     select
-        month_start_date,
+        month_start_date_et,
         sum(mrr_cents) as ending_mrr_cents,
         sum(iff(movement_type = 'new', mrr_change_cents, 0)) as new_mrr_cents,
         sum(
@@ -48,15 +48,15 @@ monthly as (
             churn_type = 'involuntary'
         ) as involuntarily_churned_subscriptions
     from subscription_months
-    group by month_start_date
+    group by month_start_date_et
 
 ),
 
 final as (
 
     select
-        months.month_start_date,
-        months.month_end_date,
+        months.month_start_date_et,
+        months.month_end_date_et,
         months.month_label,
 
         -- MRR (cents)
@@ -64,7 +64,7 @@ final as (
             months.is_opening_balance,
             null,
             lag(monthly.ending_mrr_cents) over (
-                order by months.month_start_date
+                order by months.month_start_date_et
             )
         ) as starting_mrr_cents,
         iff(
@@ -98,7 +98,7 @@ final as (
             months.is_opening_balance,
             null,
             lag(monthly.ending_subscriptions) over (
-                order by months.month_start_date
+                order by months.month_start_date_et
             )
         ) as starting_subscriptions,
         iff(
@@ -127,7 +127,7 @@ final as (
         months.is_activity_complete
     from months
     inner join monthly
-        on months.month_start_date = monthly.month_start_date
+        on months.month_start_date_et = monthly.month_start_date_et
 
 )
 

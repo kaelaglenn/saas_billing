@@ -49,7 +49,7 @@ spine as (
 months as (
 
     select
-        spine.date_month::date as month_start_date,
+        spine.date_month::date as month_start_date_et,
         month_bounds.data_starts_at,
         month_bounds.data_as_of
     from spine
@@ -63,13 +63,13 @@ months as (
 final as (
 
     select
-        month_start_date,
-        last_day(month_start_date) as month_end_date,
+        month_start_date_et,
+        last_day(month_start_date_et) as month_end_date_et,
         {{ naive_to_utc(
-            'month_start_date::timestamp_ntz', reporting_tz
+            'month_start_date_et::timestamp_ntz', reporting_tz
         ) }} as month_started_at,
         {{ naive_to_utc(
-            'dateadd(month, 1, month_start_date)::timestamp_ntz', reporting_tz
+            'dateadd(month, 1, month_start_date_et)::timestamp_ntz', reporting_tz
         ) }} as month_ended_at,
         month_ended_at <= data_as_of as is_month_closed,
         month_started_at >= data_starts_at

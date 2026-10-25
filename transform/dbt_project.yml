@@ -22,6 +22,9 @@ vars:
   # The business reports in Eastern Time: months, month-end MRR, and anything bucketed by date use this timezone.
   # Data is stored and computed in UTC; convert only where a reporting date or period is needed.
   reporting_timezone: America/New_York
+  # A trial is "matured" (its outcome can be measured) once its trial period plus this buffer has passed as of
+  # the data watermark. Starting assumption; revisit after measuring how conversion timing is distributed.
+  trial_maturity_buffer_days: 5
 
 # Defaults per folder, so individual models rarely need their own config.
 # +schema only takes effect in prod; dev and CI build everything into one schema (see macros/generate_schema_name.sql).

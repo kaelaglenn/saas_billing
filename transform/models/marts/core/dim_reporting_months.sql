@@ -12,13 +12,14 @@ months as (
 final as (
 
     select
-        month_start_date,
-        month_end_date,
-        to_char(month_start_date, 'YYYY-MM') as month_label,
-        year(month_start_date) as year,
+        month_start_date_et,
+        month_end_date_et,
+        to_char(month_start_date_et, 'YYYY-MM') as month_label,
+        year(month_start_date_et) as year,
         month_started_at,
         month_ended_at,
-        month_start_date = min(month_start_date) over () as is_opening_balance,
+        month_start_date_et
+        = min(month_start_date_et) over () as is_opening_balance,
         is_month_closed,
         is_activity_complete
     from months

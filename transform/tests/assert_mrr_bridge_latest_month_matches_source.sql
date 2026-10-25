@@ -14,7 +14,7 @@ latest_bridge as (
         ending_mrr_cents,
         ending_subscriptions
     from {{ ref('fct_mrr_bridge') }}
-    qualify month_start_date = max(month_start_date) over ()
+    qualify month_start_date_et = max(month_start_date_et) over ()
 
 ),
 

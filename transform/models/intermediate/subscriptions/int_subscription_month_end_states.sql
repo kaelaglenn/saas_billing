@@ -33,8 +33,8 @@ state_at_cutoff as (
         history.seats,
         history.mrr_cents,
         history.valid_from,
-        months.month_start_date,
-        months.month_end_date,
+        months.month_start_date_et,
+        months.month_end_date_et,
         months.month_started_at,
         months.month_ended_at,
         months.is_month_closed,
@@ -52,13 +52,13 @@ final as (
 
     select
         {{ dbt_utils.generate_surrogate_key(
-            ['subscription_id', 'month_start_date']
+            ['subscription_id', 'month_start_date_et']
         ) }} as subscription_month_id,
         subscription_id,
         account_id,
         subscription_history_id,
-        month_start_date,
-        month_end_date,
+        month_start_date_et,
+        month_end_date_et,
         subscription_status,
         plan,
         billing_frequency,

@@ -6,13 +6,13 @@ models:
       balance month (December 2023) through the latest month in the data. month_ended_at is the month-end cutoff:
       the UTC instant of local midnight on the first of the next month.
     columns:
-      - name: month_start_date
+      - name: month_start_date_et
         description: Primary key. First day of the month (reporting timezone).
         data_type: date
         data_tests:
           - unique
           - not_null
-      - name: month_end_date
+      - name: month_end_date_et
         description: Last day of the month (reporting timezone).
         data_type: date
       - name: month_label
@@ -38,3 +38,150 @@ models:
       - name: is_activity_complete
         description: True when the whole month is covered by the data (false for the opening and provisional months).
         data_type: boolean
+
+  - name: dim_subscriptions
+    description: >
+      One row per subscription, current state (Type 1). Plan, seats, frequency, status, and MRR come from the
+      subscription's current int_subscription_history row, so every mart describes state the same way. Includes
+      the lifecycle: trial start, paid start, the latest cancellation request (and whether it's still pending),
+      and how and when it ended. Trials are subscriptions too (status trialing or trial_expired).
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: dim_subscriptions_end_reason_iff_ended
+          arguments:
+            expression: "(end_reason is not null) = (ended_at is not null)"
+      - dbt_utils.expression_is_true:
+          name: dim_subscriptions_pending_cancellation_only_when_live
+          arguments:
+            expression: "not has_pending_cancellation or subscription_status in ('active', 'past_due')"
+      - dbt_utils.expression_is_true:
+          name: dim_subscriptions_reactivation_has_previous
+          arguments:
+            expression: "not is_reactivation or previous_subscription_id is not null"
+    columns:
+      - name: subscription_id
+        description: Primary key.
+        data_type: varchar
+        data_tests:
+          - unique
+          - not_null
+      - name: account_id
+        description: The customer.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_accounts')
+                field: account_id
+      - name: previous_subscription_id
+        description: For reactivations, the account's previous (churned) subscription.
+        data_type: varchar
+      - name: subscription_status
+        description: Current status (trialing, active, past_due, cancelled, lapsed, trial_expired).
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: plan
+        description: Current (or final) plan.
+        data_type: varchar
+      - name: billing_frequency
+        description: Current (or final) billing frequency.
+        data_type: varchar
+      - name: seats
+        description: Current (or final) seats.
+        data_type: number(38, 0)
+      - name: mrr_cents
+        description: Current MRR; zero unless active or past_due.
+        data_type: number(38, 0)
+      - name: end_reason
+        description: How the subscription ended (cancelled, lapsed, trial_expired); null while live or trialing.
+        data_type: varchar
+      - name: cancel_reason
+        description: Reason given on the latest cancellation request, if any (including requests that never took effect).
+        data_type: varchar
+      - name: is_reactivation
+        description: A returning account's new subscription.
+        data_type: boolean
+      - name: is_imported
+        description: Existed before the Jan 1, 2024 cutover (no trial or history before then in the data).
+        data_type: boolean
+      - name: has_pending_cancellation
+        description: A cancellation is requested but not yet effective (takes effect at the period end).
+        data_type: boolean
+      - name: trial_started_at
+        description: Trial start (UTC); null for imported subscriptions and reactivations.
+        data_type: timestamp_tz
+      - name: started_at
+        description: Paid start (UTC), from trial conversion, reactivation, or the original start of imported subscriptions.
+        data_type: timestamp_tz
+      - name: cancel_requested_at
+        description: When the latest cancellation was requested (UTC).
+        data_type: timestamp_tz
+      - name: ended_at
+        description: When the subscription ended (UTC); null while live or trialing.
+        data_type: timestamp_tz
+
+  - name: dim_accounts
+    description: >
+      One row per customer account: company attributes plus customer-level facts rolled up from its subscriptions.
+      customer_status: customer (a live paid subscription), trialing (in a trial, never paid), churned (paid at
+      some point, nothing live now), expired_trial (only ever had trials that expired). A returning customer is
+      a customer again; reactivation_count records the history.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: dim_accounts_customers_have_mrr
+          arguments:
+            expression: "(customer_status = 'customer') = (current_mrr_cents > 0)"
+    columns:
+      - name: account_id
+        description: Primary key.
+        data_type: varchar
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_billing__accounts')
+                field: account_id
+      - name: latest_subscription_id
+        description: The account's most recently started subscription (live or not).
+        data_type: varchar
+      - name: company_name
+        description: Company name; not unique.
+        data_type: varchar
+      - name: industry
+        description: Industry, for segmentation.
+        data_type: varchar
+      - name: company_size_band
+        description: Employee-count band (1-10, 11-50, 51-200, 201+).
+        data_type: varchar
+      - name: customer_status
+        description: customer, trialing, churned, or expired_trial.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["customer", "trialing", "churned", "expired_trial"]
+      - name: subscription_count
+        description: All subscriptions, including trials.
+        data_type: number(38, 0)
+      - name: paid_subscription_count
+        description: Subscriptions that started paying.
+        data_type: number(38, 0)
+      - name: reactivation_count
+        description: Times the account came back after churning.
+        data_type: number(38, 0)
+      - name: current_mrr_cents
+        description: MRR across the account's live subscriptions (at most one).
+        data_type: number(38, 0)
+      - name: created_at
+        description: When the account was created (UTC; converted from the source's naive ET).
+        data_type: timestamp_tz
+      - name: first_trial_started_at
+        description: First trial start (UTC); null if the account never trialed in the data.
+        data_type: timestamp_tz
+      - name: first_paid_at
+        description: First paid start (UTC), including pre-2024 starts of imported subscriptions.
+        data_type: timestamp_tz
