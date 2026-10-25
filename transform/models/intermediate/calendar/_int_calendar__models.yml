@@ -22,12 +22,12 @@ models:
           arguments:
             expression: "hour(month_started_at) in (4, 5) and hour(month_ended_at) in (4, 5)"
     columns:
-      - name: month_start_date
+      - name: month_start_date_et
         description: Primary key. First day of the month in the reporting timezone.
         data_tests:
           - unique
           - not_null
-      - name: month_end_date
+      - name: month_end_date_et
         description: Last day of the month in the reporting timezone.
       - name: month_started_at
         description: Local midnight on the first of the month, as a UTC instant (inclusive).

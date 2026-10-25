@@ -114,6 +114,19 @@ One-time setup on a new machine:
 dbt 1.12 also loads the repo's `.env` on its own, so dbt commands work even outside direnv; direnv still activates
 the Python environment for plain `dbt`, `sqlfluff`, and `pytest`.
 
+### Naming conventions
+
+| Suffix / prefix | Meaning |
+|---|---|
+| `_at` | Timestamp, always **UTC** (`TIMESTAMP_TZ`, which also carries its offset) |
+| `_date_et`, `_month_et` | Calendar date or month (first day) in the **reporting timezone**, America/New_York. A `DATE` has no timezone, so the name states it |
+| `_cents` | Money, integer USD cents |
+| `is_`, `has_` | Boolean |
+| `stg_`, `int_`, `dim_`, `fct_` | Staging, intermediate, dimension, fact models |
+
+Reporting dates come from the `to_reporting_date()` macro; the reporting timezone is `vars.reporting_timezone` in
+`transform/dbt_project.yml`.
+
 SQL style follows dbt Labs' style guide (lowercase, trailing commas, explicit aliases), enforced by
 [SQLFluff](.sqlfluff) with the dbt templater. The pre-commit hook lints changed models; from the repo root:
 

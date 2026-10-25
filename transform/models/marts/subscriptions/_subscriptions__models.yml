@@ -15,7 +15,7 @@ models:
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns: [subscription_id, month_start_date]
+            combination_of_columns: [subscription_id, month_start_date_et]
       - dbt_utils.expression_is_true:
           name: fct_subscription_months_movement_signs
           arguments:
@@ -30,7 +30,7 @@ models:
             expression: "(movement_type = 'churn') = (churn_type is not null)"
     columns:
       - name: subscription_month_id
-        description: Primary key; surrogate key of subscription_id and month_start_date.
+        description: Primary key; surrogate key of subscription_id and month_start_date_et.
         data_type: varchar
         data_tests:
           - unique
@@ -43,7 +43,7 @@ models:
       - name: account_id
         description: The customer.
         data_type: varchar
-      - name: month_start_date
+      - name: month_start_date_et
         description: The reporting month.
         data_type: date
         data_tests:
@@ -51,8 +51,8 @@ models:
           - relationships:
               arguments:
                 to: ref('dim_reporting_months')
-                field: month_start_date
-      - name: month_end_date
+                field: month_start_date_et
+      - name: month_end_date_et
         description: Last day of the reporting month.
         data_type: date
       - name: subscription_status
@@ -141,7 +141,7 @@ models:
           config:
             where: "not is_opening_balance"
     columns:
-      - name: month_start_date
+      - name: month_start_date_et
         description: Primary key. The reporting month.
         data_type: date
         data_tests:
@@ -150,8 +150,8 @@ models:
           - relationships:
               arguments:
                 to: ref('dim_reporting_months')
-                field: month_start_date
-      - name: month_end_date
+                field: month_start_date_et
+      - name: month_end_date_et
         description: Last day of the reporting month.
         data_type: date
       - name: month_label
@@ -211,3 +211,209 @@ models:
       - name: is_activity_complete
         description: False for the opening and provisional months.
         data_type: boolean
+
+  - name: dim_subscription_history
+    description: >
+      SCD Type 2 history of each subscription's effective state (status, plan, seats, billing frequency, MRR) over
+      [valid_from, valid_to): one row per period during which none of them changed. Effective state only;
+      requested-but-not-yet-effective changes are in fct_subscription_change_requests.
+    columns:
+      - name: subscription_history_id
+        description: Primary key; surrogate key of subscription_id and valid_from.
+        data_type: varchar
+        data_tests:
+          - unique
+          - not_null
+      - name: subscription_id
+        description: The subscription.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_subscriptions')
+                field: subscription_id
+      - name: account_id
+        description: The customer.
+        data_type: varchar
+      - name: subscription_status
+        description: Effective status during the period.
+        data_type: varchar
+      - name: plan
+        description: Effective plan during the period.
+        data_type: varchar
+      - name: billing_frequency
+        description: Effective billing frequency during the period.
+        data_type: varchar
+      - name: seats
+        description: Effective seats during the period.
+        data_type: number(38, 0)
+      - name: mrr_cents
+        description: MRR during the period; zero unless active or past_due.
+        data_type: number(38, 0)
+      - name: valid_from
+        description: Start of the period (UTC), inclusive.
+        data_type: timestamp_tz
+      - name: valid_to
+        description: End of the period (UTC), exclusive; null for the current period.
+        data_type: timestamp_tz
+      - name: is_current
+        description: True for the subscription's latest period.
+        data_type: boolean
+
+  - name: fct_subscription_change_requests
+    description: >
+      Transaction fact: one row per customer-initiated change (seat increases and decreases, plan upgrades and
+      downgrades, billing frequency switches) and cancellation, including cancellations requested before the
+      Jan 1, 2024 cutover. outcome: applied, pending (effective after the latest data), or never_took_effect (the
+      subscription lapsed or was cancelled first). For point-in-time features (e.g. churn models), filter on
+      ingested_at, when the request became known to the warehouse.
+    columns:
+      - name: change_request_id
+        description: Primary key; the event_id of the event recording the request.
+        data_type: varchar
+        data_tests:
+          - unique
+          - not_null
+      - name: subscription_id
+        description: The subscription.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_subscriptions')
+                field: subscription_id
+      - name: account_id
+        description: The customer.
+        data_type: varchar
+      - name: request_type
+        description: seat_increase, seat_decrease, plan_upgrade, plan_downgrade, frequency_switch, or cancellation.
+        data_type: varchar
+      - name: from_plan
+        description: For plan changes, the plan before.
+        data_type: varchar
+      - name: to_plan
+        description: For plan changes, the plan after.
+        data_type: varchar
+      - name: from_billing_frequency
+        description: For frequency switches, the frequency before.
+        data_type: varchar
+      - name: to_billing_frequency
+        description: For frequency switches, the frequency after.
+        data_type: varchar
+      - name: cancel_reason
+        description: For cancellations, the customer's reason.
+        data_type: varchar
+      - name: outcome
+        description: applied, pending, or never_took_effect.
+        data_type: varchar
+      - name: seat_delta
+        description: For seat changes, the signed change.
+        data_type: number(38, 0)
+      - name: is_scheduled
+        description: Takes effect after it was requested (decreases, downgrades, switches, cancellations).
+        data_type: boolean
+      - name: requested_at
+        description: When the customer made the request (UTC).
+        data_type: timestamp_tz
+      - name: effective_at
+        description: When the change took or will take effect (UTC).
+        data_type: timestamp_tz
+      - name: ingested_at
+        description: When the request landed in the warehouse (UTC).
+        data_type: timestamp_tz
+      - name: requested_date_et
+        description: Date requested, in the reporting timezone (America/New_York).
+        data_type: date
+      - name: effective_date_et
+        description: Date effective, in the reporting timezone (America/New_York).
+        data_type: date
+
+  - name: fct_trials
+    description: >
+      Accumulating snapshot: one row per trial (a subscription that started with a trial; imported subscriptions
+      and reactivations had none), with its milestones and outcome: converted, expired, or in_progress.
+
+      is_matured: the trial period plus var trial_maturity_buffer_days (5) has passed as of the data watermark,
+      so the outcome can be measured. Use matured trials only for conversion rates, so recent cohorts with trials
+      still running don't look artificially low. The 5-day buffer is a starting assumption to revisit after
+      measuring how conversion timing is distributed.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: fct_trials_converted_iff_converted_at
+          arguments:
+            expression: "(trial_outcome = 'converted') = (converted_at is not null)"
+      - dbt_utils.expression_is_true:
+          name: fct_trials_conversion_within_trial
+          arguments:
+            expression: "converted_at >= trial_started_at and converted_at < trial_ends_at"
+          config:
+            where: "trial_outcome = 'converted'"
+      - dbt_utils.expression_is_true:
+          name: fct_trials_expire_at_trial_end
+          arguments:
+            expression: "expired_at = trial_ends_at"
+          config:
+            where: "trial_outcome = 'expired'"
+      - dbt_utils.expression_is_true:
+          name: fct_trials_matured_trials_have_outcomes
+          arguments:
+            expression: "trial_outcome != 'in_progress'"
+          config:
+            where: "is_matured"
+    columns:
+      - name: subscription_id
+        description: Primary key; the subscription that started with this trial.
+        data_type: varchar
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_subscriptions')
+                field: subscription_id
+      - name: account_id
+        description: The customer.
+        data_type: varchar
+      - name: plan
+        description: Plan chosen at trial start.
+        data_type: varchar
+      - name: billing_frequency
+        description: Billing frequency chosen at trial start.
+        data_type: varchar
+      - name: trial_outcome
+        description: converted, expired, or in_progress.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["converted", "expired", "in_progress"]
+      - name: seats
+        description: Seats chosen at trial start.
+        data_type: number(38, 0)
+      - name: days_to_convert
+        description: Whole days from trial start to conversion (0 = within the first 24 hours); null unless converted.
+        data_type: number(38, 0)
+      - name: is_matured
+        description: The trial period plus the maturity buffer has passed as of the latest data.
+        data_type: boolean
+      - name: trial_started_at
+        description: Trial start (UTC).
+        data_type: timestamp_tz
+      - name: trial_ends_at
+        description: When the trial ends if not converted (UTC).
+        data_type: timestamp_tz
+      - name: converted_at
+        description: Paid start (UTC); null unless converted.
+        data_type: timestamp_tz
+      - name: expired_at
+        description: When the trial expired (UTC); null unless expired.
+        data_type: timestamp_tz
+      - name: trial_start_date_et
+        description: Trial start date in the reporting timezone (America/New_York).
+        data_type: date
+      - name: trial_start_month_et
+        description: First day of the trial start month in the reporting timezone; the conversion cohort.
+        data_type: date

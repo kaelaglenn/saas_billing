@@ -29,25 +29,27 @@ with_previous as (
     select
         states.*,
         -- the previous row only counts if it's the immediately preceding month
-        lag(states.month_start_date) over (
-            partition by states.subscription_id
-            order by states.month_start_date
-        ) = dateadd(month, -1, states.month_start_date) as has_previous_month,
+        lag(states.month_start_date_et)
+            over (
+                partition by states.subscription_id
+                order by states.month_start_date_et
+            )
+        = dateadd(month, -1, states.month_start_date_et) as has_previous_month,
         lag(states.mrr_cents) over (
             partition by states.subscription_id
-            order by states.month_start_date
+            order by states.month_start_date_et
         ) as lagged_mrr_cents,
         lag(states.plan) over (
             partition by states.subscription_id
-            order by states.month_start_date
+            order by states.month_start_date_et
         ) as previous_plan,
         lag(states.seats) over (
             partition by states.subscription_id
-            order by states.month_start_date
+            order by states.month_start_date_et
         ) as previous_seats,
         lag(states.billing_frequency) over (
             partition by states.subscription_id
-            order by states.month_start_date
+            order by states.month_start_date_et
         ) as previous_billing_frequency
     from states
 
@@ -66,7 +68,7 @@ classified as (
         ) as previous_mrr_cents
     from with_previous
     inner join months
-        on with_previous.month_start_date = months.month_start_date
+        on with_previous.month_start_date_et = months.month_start_date_et
     left join reactivations
         on with_previous.subscription_id = reactivations.subscription_id
 
@@ -78,8 +80,8 @@ final as (
         subscription_month_id,
         subscription_id,
         account_id,
-        month_start_date,
-        month_end_date,
+        month_start_date_et,
+        month_end_date_et,
         subscription_status,
         plan,
         billing_frequency,

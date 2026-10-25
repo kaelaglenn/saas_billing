@@ -12,7 +12,7 @@ with
 
 latest_month as (
 
-    select max(month_start_date) as month_start_date
+    select max(month_start_date_et) as month_start_date_et
     from {{ ref('int_reporting_months') }}
 
 ),
@@ -22,7 +22,7 @@ latest_states as (
     select states.*
     from {{ ref('int_subscription_month_end_states') }} as states
     inner join latest_month
-        on states.month_start_date = latest_month.month_start_date
+        on states.month_start_date_et = latest_month.month_start_date_et
 
 ),
 
