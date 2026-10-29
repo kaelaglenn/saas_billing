@@ -42,7 +42,8 @@ so it's an outward action: ask first.
 - **Time**: `*_at` is a UTC `TIMESTAMP_TZ`. `*_date_et` / `*_month_et` are dates in the reporting timezone
   (`vars.reporting_timezone`, America/New_York), produced by `to_reporting_date()`. Naive source timestamps go
   through `naive_to_utc()`. "Now" is `int_data_watermark`, never `current_timestamp()`.
-- **Money**: integer cents, `*_cents`. Booleans: `is_` / `has_`.
+- **Money**: integer cents, `*_cents`.
+- **Booleans**: `is_` / `has_`.
 - **Marts**: contracts are enforced, so every column needs a `data_type` in YAML.
 - **Style**: dbt Labs (lowercase, trailing commas, explicit aliases). SQLFluff enforces it, and a hook lints dbt
   SQL after each edit.
