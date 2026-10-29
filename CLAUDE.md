@@ -11,7 +11,7 @@ generator (Python) ──▶ data/raw ──dlt──▶ Snowflake RAW.BILLING �
   → `models/marts/` (tables, contracts enforced). Singular tests in `transform/tests/`.
 - `docs/raw_sources.md`: what we know about each raw table (grain, keys, timezones, nulls, duplicates). Read it
   before touching a source; update it when you learn something new.
-- `docs/decisions/`: architecture decision records (ADRs). Create the folder with the first one.
+- `docs/decisions/`: architecture decision records (ADRs); new ones via the `/adr` skill.
 - README: setup, the dbt targets, and the full naming table.
 
 ## Commands
