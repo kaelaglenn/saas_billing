@@ -11,7 +11,7 @@ generator (Python) ──▶ data/raw ──dlt──▶ Snowflake RAW.BILLING �
   → `models/marts/` (tables, contracts enforced). Singular tests in `transform/tests/`.
 - `docs/raw_sources.md`: what we know about each raw table (grain, keys, timezones, nulls, duplicates). Read it
   before touching a source; update it when you learn something new.
-- `docs/decisions/`: architecture decision records (ADRs). Create the folder with the first one.
+- `docs/decisions/`: architecture decision records (ADRs); new ones via the `/adr` skill.
 - README: setup, the dbt targets, and the full naming table.
 
 ## Commands
@@ -63,6 +63,9 @@ so it's an outward action: ask first.
 - Verify with evidence independent of the code under test (the source's own current-state tables, invoice status,
   reconciliations computed another way). Avoid tests that are true by construction, and prove a singular test
   actually compared rows (non-empty join), so it can't pass on empty.
+- Give a `brief` before outward actions, at decisions that are costly to reverse, and when a unit of work is
+  done. Confirm every one-way door with the user. After a decision that meets the `adr` skill's criteria, offer
+  to record it as an ADR; write it only on a yes.
 - One branch per change (`feat/`, `fix/`, `chore/`, `ci/`, `docs/`, `test/`), always from up-to-date `main`,
   never from an unmerged branch. Open a PR; never merge it.
 
