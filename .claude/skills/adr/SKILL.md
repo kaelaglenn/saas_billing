@@ -1,7 +1,6 @@
 ---
 name: adr
-description: Write an architecture decision record (ADR) in docs/decisions/ from the current conversation.
-disable-model-invocation: true
+description: Offer to record an architecture decision record (ADR) in docs/decisions/, then write it if the user agrees. Use when a design or modeling decision has just been made that chose between real alternatives and would be costly to reverse or puzzling later, e.g. a grain or modeling approach, a metric definition, a convention, an exception to a rule or check, or an assumption to revisit.
 argument-hint: "[decision title]"
 ---
 
@@ -9,6 +8,22 @@ argument-hint: "[decision title]"
 
 An ADR records one decision: the situation, what we chose, what we rejected and why, and what follows from it.
 It's written once and not rewritten; a later decision supersedes it with a new ADR.
+
+## 0. Offer first (when not started with `/adr`)
+
+When this skill starts on its own, write nothing yet. Name the decision in one line, say why it seems worth
+recording, and ask the user whether to document it. Worth recording:
+
+- It chose between real alternatives, and the reason isn't obvious from the code
+- It's costly to reverse: a grain, a contract, a metric definition, a naming convention
+- It makes an exception to a rule, test, or check
+- It rests on an assumption that should be revisited (a threshold, a buffer, a cutoff)
+
+Not worth recording: following an existing convention or ADR, routine fixes, choices with no real alternative.
+Offer at a natural pause (after the decision is settled, not mid-discussion), and offer each decision once. If
+the user says no or later, continue with the task. If yes, go on to step 1.
+
+When the user typed `/adr`, skip this step.
 
 ## 1. Number and name
 
