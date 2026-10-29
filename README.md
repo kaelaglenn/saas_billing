@@ -157,6 +157,11 @@ The hooks refuse commits made directly on `main`, block private keys from being 
 GitHub won't enforce branch protection on a free private repo, so the hook is the guardrail until the repo
 goes public.
 
+Working with Claude Code: [CLAUDE.md](CLAUDE.md) holds the project's commands, conventions, and known pitfalls.
+[.claude/settings.json](.claude/settings.json) enforces the hard rules: no reading the answer key, no dbt
+`prod`/`ci` targets, no merging PRs, and SQLFluff on every SQL edit. Personal permissions go in
+`.claude/settings.local.json` (git-ignored).
+
 ## Generator
 
 The pipeline runs in stages so each can be tested on its own:

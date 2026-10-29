@@ -22,5 +22,6 @@ logs/
 
 # Editors (per-person, machine-specific settings)
 .cursor/
+.claude/settings.local.json
 
 .DS_Store
