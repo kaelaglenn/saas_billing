@@ -63,7 +63,9 @@ so it's an outward action: ask first.
 - Verify with evidence independent of the code under test (the source's own current-state tables, invoice status,
   reconciliations computed another way). Avoid tests that are true by construction, and prove a singular test
   actually compared rows (non-empty join), so it can't pass on empty.
-- After a decision that meets the `adr` skill's criteria, offer to record it as an ADR; write it only on a yes.
+- Give a `brief` before outward actions, at decisions that are costly to reverse, and when a unit of work is
+  done. Confirm every one-way door with the user. After a decision that meets the `adr` skill's criteria, offer
+  to record it as an ADR; write it only on a yes.
 - One branch per change (`feat/`, `fix/`, `chore/`, `ci/`, `docs/`, `test/`), always from up-to-date `main`,
   never from an unmerged branch. Open a PR; never merge it.
 

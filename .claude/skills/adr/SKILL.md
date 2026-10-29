@@ -21,7 +21,8 @@ recording, and ask the user whether to document it. Worth recording:
 
 Not worth recording: following an existing convention or ADR, routine fixes, choices with no real alternative.
 Offer at a natural pause (after the decision is settled, not mid-discussion), and offer each decision once. If
-the user says no or later, continue with the task. If yes, go on to step 1.
+the user says no or later, continue with the task. If yes, go on to step 1. If a `brief` already asked "Record
+it as an ADR?" for this decision, that was the offer: don't ask again.
 
 When the user typed `/adr`, skip this step.
 
