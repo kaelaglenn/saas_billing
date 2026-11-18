@@ -1,0 +1,461 @@
+models:
+
+  - name: fct_invoices
+    description: >
+      Accumulating snapshot: one row per invoice, with its milestones (issued, due, first payment, fully paid,
+      became overdue, written off) and payment_outcome. paid_on_time: fully paid and never overdue (card: the
+      first charge succeeded; invoice payment: paid by due_at). paid_late: fully paid after being overdue.
+      written_off: overdue, then written off when dunning ran out or the subscription lapsed. overdue: overdue and
+      unpaid at the end of the data. open: not yet due (invoice payment only; may be partially paid).
+      amount_paid + outstanding + written_off = amount_due on every row.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: fct_invoices_amounts_add_up
+          arguments:
+            expression: "amount_paid_cents + outstanding_cents + written_off_cents = amount_due_cents"
+      - dbt_utils.expression_is_true:
+          name: fct_invoices_paid_date_iff_paid
+          arguments:
+            expression: "(payment_outcome in ('paid_on_time', 'paid_late')) = (paid_date_et is not null)"
+      - dbt_utils.expression_is_true:
+          name: fct_invoices_overdue_flag_matches_outcome
+          arguments:
+            expression: "has_been_overdue = (payment_outcome in ('paid_late', 'written_off', 'overdue'))"
+    columns:
+      - name: invoice_id
+        description: Primary key.
+        data_type: varchar
+        data_tests:
+          - unique
+          - not_null
+      - name: subscription_id
+        description: The subscription billed.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_subscriptions')
+                field: subscription_id
+      - name: account_id
+        description: The customer.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_accounts')
+                field: account_id
+      - name: invoice_type
+        description: renewal or proration.
+        data_type: varchar
+      - name: payment_method
+        description: >
+          The invoice's payment terms: card (charged at issue) or invoice (Net 30, paid by cheque or bank
+          transfer). Not the same values as fct_payments.payment_method, which records how money arrived.
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["card", "invoice"]
+      - name: payment_outcome
+        description: paid_on_time, paid_late, written_off, overdue, or open.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["paid_on_time", "paid_late", "written_off", "overdue", "open"]
+      - name: amount_due_cents
+        description: Invoice total.
+        data_type: number(38, 0)
+      - name: amount_paid_cents
+        description: Money received (succeeded payments only).
+        data_type: number(38, 0)
+      - name: outstanding_cents
+        description: Still owed at the end of the data (overdue or open invoices); 0 otherwise.
+        data_type: number(38, 0)
+      - name: written_off_cents
+        description: Unpaid balance at write-off (bad debt); 0 unless written off.
+        data_type: number(38, 0)
+      - name: succeeded_payment_count
+        description: Payments received. More than one means partial payments (invoice payment only).
+        data_type: number(38, 0)
+      - name: card_attempt_count
+        description: Card charge attempts, including retries; 0 for invoice payment.
+        data_type: number(38, 0)
+      - name: failed_attempt_count
+        description: Failed card charge attempts.
+        data_type: number(38, 0)
+      - name: days_to_pay
+        description: Whole days from issue to full payment (0 = within 24 hours); null unless fully paid.
+        data_type: number(38, 0)
+      - name: has_partial_payments
+        description: Paid in more than one payment.
+        data_type: boolean
+      - name: has_been_overdue
+        description: The invoice was overdue at some point (card - the first charge failed; invoice - unpaid at due_at).
+        data_type: boolean
+      - name: issued_at
+        description: When the invoice was issued (UTC).
+        data_type: timestamp_tz
+      - name: due_at
+        description: Due date (UTC); equals issued_at for card invoices.
+        data_type: timestamp_tz
+      - name: first_payment_at
+        description: First money received (UTC).
+        data_type: timestamp_tz
+      - name: paid_at
+        description: When cumulative payments covered the amount due (UTC); null unless fully paid.
+        data_type: timestamp_tz
+      - name: became_overdue_at
+        description: When the invoice became overdue (UTC); null if it never was.
+        data_type: timestamp_tz
+      - name: written_off_at
+        description: When the invoice was written off (UTC); null unless written off.
+        data_type: timestamp_tz
+      - name: issued_date_et
+        description: Issue date in the reporting timezone (America/New_York).
+        data_type: date
+      - name: issued_month_et
+        description: First day of the issue month in the reporting timezone; the billing month.
+        data_type: date
+      - name: due_date_et
+        description: Due date in the reporting timezone.
+        data_type: date
+      - name: paid_date_et
+        description: Fully paid date in the reporting timezone; null unless fully paid.
+        data_type: date
+      - name: written_off_date_et
+        description: Write-off date in the reporting timezone; null unless written off.
+        data_type: date
+
+  - name: fct_payments
+    description: >
+      Transaction fact: one row per payment attempt, failed or succeeded. Card attempts charge the full amount due
+      (at issue, then scheduled retries at +7 and +14 days, or when the customer updates their card); cheque and
+      bank transfer payments never fail and can be partial. Only succeeded attempts are money received: sum
+      received_amount_cents, not attempted_amount_cents. Invoices with nothing paid yet have no rows here.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: fct_payments_failure_reason_iff_failed
+          arguments:
+            expression: "(payment_status = 'failed') = (failure_reason is not null)"
+      - dbt_utils.expression_is_true:
+          name: fct_payments_attempt_number_iff_card
+          arguments:
+            expression: "(payment_method = 'card') = (attempt_number is not null)"
+      - dbt_utils.expression_is_true:
+          name: fct_payments_received_only_when_succeeded
+          arguments:
+            expression: "received_amount_cents = iff(is_succeeded, attempted_amount_cents, 0)"
+    columns:
+      - name: payment_id
+        description: Primary key.
+        data_type: varchar
+        data_tests:
+          - unique
+          - not_null
+      - name: invoice_id
+        description: The invoice paid.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_invoices')
+                field: invoice_id
+      - name: subscription_id
+        description: The subscription billed.
+        data_type: varchar
+      - name: account_id
+        description: The customer.
+        data_type: varchar
+      - name: payment_method
+        description: >
+          How the money was sent: card, cheque, or bank_transfer. Not the same values as
+          fct_invoices.payment_method (card or invoice terms).
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["card", "cheque", "bank_transfer"]
+      - name: payment_status
+        description: succeeded or failed.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["succeeded", "failed"]
+      - name: failure_reason
+        description: Why a card charge failed (insufficient_funds, card_declined, card_expired); null if succeeded.
+        data_type: varchar
+      - name: attempt_number
+        description: Card charge attempt on the invoice, starting at 1; null for cheque and bank transfer.
+        data_type: number(38, 0)
+      - name: attempted_amount_cents
+        description: Amount charged or sent. For failed attempts, the amount that was attempted.
+        data_type: number(38, 0)
+      - name: received_amount_cents
+        description: Money received; equals attempted_amount_cents if succeeded, 0 if failed.
+        data_type: number(38, 0)
+      - name: is_succeeded
+        description: The payment succeeded.
+        data_type: boolean
+      - name: attempted_at
+        description: When the payment was attempted or received (UTC).
+        data_type: timestamp_tz
+      - name: attempted_date_et
+        description: Attempt date in the reporting timezone.
+        data_type: date
+      - name: attempted_month_et
+        description: First day of the attempt month in the reporting timezone; the collection month.
+        data_type: date
+
+  - name: fct_ar_month_end_balances
+    description: >
+      Periodic snapshot: accounts receivable at each reporting month-end, one row per invoice per month-end cutoff
+      at which money was owed on it (issued, not yet fully paid, not yet written off). balance_cents is the amount
+      due minus payments received before the cutoff. days_past_due is 0 until due_at, then whole days past due,
+      rounded up. Aging buckets: current, 1-30, 31-60, 61-90, 90+. Written-off invoices leave receivables at
+      write-off, so balances can't age past 14 days (card) or 60 days (invoice payment). Use for AR aging by
+      customer or payment terms; fct_ar_rollforward has the monthly totals.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [invoice_id, month_start_date_et]
+    columns:
+      - name: invoice_month_id
+        description: Primary key; surrogate key of invoice_id and month_start_date_et.
+        data_type: varchar
+        data_tests:
+          - unique
+          - not_null
+      - name: invoice_id
+        description: The invoice owed.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_invoices')
+                field: invoice_id
+      - name: subscription_id
+        description: The subscription billed.
+        data_type: varchar
+      - name: account_id
+        description: The customer.
+        data_type: varchar
+      - name: payment_method
+        description: The invoice's payment terms, card or invoice.
+        data_type: varchar
+      - name: month_start_date_et
+        description: The reporting month (first day, reporting timezone).
+        data_type: date
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_reporting_months')
+                field: month_start_date_et
+      - name: month_end_date_et
+        description: Last day of the reporting month.
+        data_type: date
+      - name: aging_bucket
+        description: current, 1-30, 31-60, 61-90, or 90+ days past due at the month-end cutoff.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["current", "1-30", "31-60", "61-90", "90+"]
+      - name: amount_due_cents
+        description: Invoice total.
+        data_type: number(38, 0)
+      - name: balance_cents
+        description: Owed at the cutoff (amount due minus payments received before it).
+        data_type: number(38, 0)
+      - name: days_past_due
+        description: 0 until due_at; then days past due at the cutoff, rounded up.
+        data_type: number(38, 0)
+      - name: is_month_closed
+        description: False for the provisional latest month.
+        data_type: boolean
+      - name: due_at
+        description: Due date (UTC).
+        data_type: timestamp_tz
+      - name: month_ended_at
+        description: The month-end cutoff (UTC) the balance was taken at.
+        data_type: timestamp_tz
+
+  - name: fct_ar_rollforward
+    description: >
+      Periodic snapshot (monthly rollup): one row per reporting month explaining how accounts receivable got from
+      the previous month-end to this one: ending = starting + invoiced - collected - written_off. Amounts are
+      positive; the formula carries the signs. Ending AR comes from fct_ar_month_end_balances, the flows from
+      fct_invoices and fct_payments, so the identity is tested rather than assumed. Ending AR is also split by
+      aging bucket. The opening month (December 2023) has an ending balance only; its starting balance and flows
+      are null, not zero. So all-time sums of invoiced and collected leave out the few hours between the Jan 1
+      00:00 UTC cutover and the end of December in Eastern time (one $26.19 card invoice, paid at issue);
+      fct_invoices and fct_payments include it.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: fct_ar_rollforward_balances_roll_forward
+          arguments:
+            expression: "ending_ar_cents = starting_ar_cents + invoiced_cents - collected_cents - written_off_cents"
+          config:
+            where: "not is_opening_balance"
+      - dbt_utils.expression_is_true:
+          name: fct_ar_rollforward_aging_sums_to_ending
+          arguments:
+            expression: >
+              ending_ar_cents = current_ar_cents + past_due_1_30_ar_cents + past_due_31_60_ar_cents
+              + past_due_61_90_ar_cents + past_due_90_plus_ar_cents
+      - dbt_utils.expression_is_true:
+          name: fct_ar_rollforward_opening_month_has_no_flows
+          arguments:
+            expression: "is_opening_balance = (starting_ar_cents is null)"
+    columns:
+      - name: month_start_date_et
+        description: Primary key. First day of the reporting month.
+        data_type: date
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_reporting_months')
+                field: month_start_date_et
+      - name: month_end_date_et
+        description: Last day of the reporting month.
+        data_type: date
+      - name: month_label
+        description: The month as YYYY-MM, for display.
+        data_type: varchar
+      - name: starting_ar_cents
+        description: AR at the previous month-end; null for the opening month.
+        data_type: number(38, 0)
+      - name: invoiced_cents
+        description: Amount due on invoices issued during the month.
+        data_type: number(38, 0)
+      - name: collected_cents
+        description: Money received during the month, on any invoice.
+        data_type: number(38, 0)
+      - name: written_off_cents
+        description: Balances written off during the month (bad debt).
+        data_type: number(38, 0)
+      - name: ending_ar_cents
+        description: AR at the month-end cutoff.
+        data_type: number(38, 0)
+      - name: current_ar_cents
+        description: Ending AR not yet past due.
+        data_type: number(38, 0)
+      - name: past_due_1_30_ar_cents
+        description: Ending AR 1-30 days past due.
+        data_type: number(38, 0)
+      - name: past_due_31_60_ar_cents
+        description: Ending AR 31-60 days past due.
+        data_type: number(38, 0)
+      - name: past_due_61_90_ar_cents
+        description: Ending AR 61-90 days past due.
+        data_type: number(38, 0)
+      - name: past_due_90_plus_ar_cents
+        description: Ending AR more than 90 days past due (always 0 under today's write-off rules).
+        data_type: number(38, 0)
+      - name: invoices_issued
+        description: Invoices issued during the month.
+        data_type: number(38, 0)
+      - name: invoices_written_off
+        description: Invoices written off during the month.
+        data_type: number(38, 0)
+      - name: ending_invoices_owed
+        description: Invoices with a balance at the month-end cutoff.
+        data_type: number(38, 0)
+      - name: is_opening_balance
+        description: True for the opening month only (December 2023).
+        data_type: boolean
+      - name: is_month_closed
+        description: True when the month-end cutoff is at or before the latest data; false while a month is provisional.
+        data_type: boolean
+      - name: is_activity_complete
+        description: True when the whole month is covered by the data (false for the opening and provisional months).
+        data_type: boolean
+
+  - name: fct_card_dunning_cases
+    description: >
+      Accumulating snapshot: one row per dunning case, a card invoice whose first charge failed, with its
+      milestones (first failure, then recovered or written off) and dunning_outcome. recovered_on_retry: a
+      scheduled retry (+7 or +14 days) succeeded. recovered_after_card_update: an attempt off the retry schedule
+      succeeded; INFERRED, since no field records a card update (see assert_card_failures_only_on_retry_schedule).
+      written_off: dunning ran out or the subscription lapsed. in_dunning: still retrying at the end of the data.
+      For recovery rates, use resolved cases only (is_resolved), so cases still in dunning don't count as failures.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: fct_card_dunning_cases_recovered_iff_recovered_at
+          arguments:
+            expression: "is_recovered = (recovered_at is not null)"
+      - dbt_utils.expression_is_true:
+          name: fct_card_dunning_cases_recovery_after_failure
+          arguments:
+            expression: "recovered_at > first_failed_at"
+          config:
+            where: "is_recovered"
+    columns:
+      - name: invoice_id
+        description: Primary key; the card invoice.
+        data_type: varchar
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_invoices')
+                field: invoice_id
+      - name: subscription_id
+        description: The subscription billed.
+        data_type: varchar
+      - name: account_id
+        description: The customer.
+        data_type: varchar
+      - name: dunning_outcome
+        description: recovered_on_retry, recovered_after_card_update (inferred), written_off, or in_dunning.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["recovered_on_retry", "recovered_after_card_update", "written_off", "in_dunning"]
+      - name: first_failure_reason
+        description: Why the first charge failed (insufficient_funds, card_declined, card_expired).
+        data_type: varchar
+      - name: attempt_count
+        description: Charge attempts on the invoice, including the first.
+        data_type: number(38, 0)
+      - name: recovery_attempt_number
+        description: The attempt number that succeeded; null unless recovered.
+        data_type: number(38, 0)
+      - name: days_to_recover
+        description: Whole days from the first failure to the successful charge; null unless recovered.
+        data_type: number(38, 0)
+      - name: is_recovered
+        description: Recovered on a retry or after a card update.
+        data_type: boolean
+      - name: is_resolved
+        description: The case has ended (recovered or written off); false while still in dunning.
+        data_type: boolean
+      - name: first_failed_at
+        description: The failed first charge (UTC); equals the invoice's issue time.
+        data_type: timestamp_tz
+      - name: recovered_at
+        description: The successful charge (UTC); null unless recovered.
+        data_type: timestamp_tz
+      - name: written_off_at
+        description: When the invoice was written off (UTC); null unless written off.
+        data_type: timestamp_tz
+      - name: first_failed_date_et
+        description: First failure date in the reporting timezone.
+        data_type: date
+      - name: first_failed_month_et
+        description: First day of the first-failure month in the reporting timezone; the dunning cohort.
+        data_type: date
