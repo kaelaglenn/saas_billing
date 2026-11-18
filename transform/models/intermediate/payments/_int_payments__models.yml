@@ -1,0 +1,203 @@
+models:
+
+  - name: int_invoice_payment_summary
+    description: >
+      One row per invoice: amounts paid and outstanding, payment and attempt counts, when it was fully paid, and
+      payment_outcome. paid_on_time: fully paid and never overdue (card: the first charge succeeded; invoice
+      payment: paid by due_at). paid_late: fully paid after being overdue. written_off: overdue, then written off
+      when dunning ran out or the subscription lapsed. overdue: overdue and unpaid at the end of the data. open:
+      not yet due and not fully paid (invoice payment only; may be partially paid). Overdue and write-off rules
+      come from int_invoice_delinquency_periods.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: int_invoice_payment_summary_paid_at_iff_paid
+          arguments:
+            expression: "(payment_outcome in ('paid_on_time', 'paid_late')) = (paid_at is not null)"
+      - dbt_utils.expression_is_true:
+          name: int_invoice_payment_summary_never_overpaid
+          arguments:
+            expression: "amount_paid_cents <= amount_due_cents"
+      - dbt_utils.expression_is_true:
+          name: int_invoice_payment_summary_balance_only_when_owed
+          arguments:
+            expression: "(outstanding_cents > 0) = (payment_outcome in ('overdue', 'open'))"
+      - dbt_utils.expression_is_true:
+          name: int_invoice_payment_summary_written_off_amount_only_when_written_off
+          arguments:
+            expression: "(written_off_cents > 0) = (payment_outcome = 'written_off')"
+    columns:
+      - name: invoice_id
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_billing__invoices')
+                field: invoice_id
+      - name: subscription_id
+        description: The subscription billed.
+      - name: account_id
+        description: The customer.
+      - name: invoice_type
+        description: renewal or proration.
+      - name: payment_method
+        description: card (charged at issue) or invoice (Net 30).
+      - name: payment_outcome
+        description: paid_on_time, paid_late, written_off, overdue, or open.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["paid_on_time", "paid_late", "written_off", "overdue", "open"]
+      - name: amount_due_cents
+        description: Invoice total.
+      - name: amount_paid_cents
+        description: Money received (succeeded payments only).
+      - name: outstanding_cents
+        description: Still owed at the end of the data (overdue or open invoices); 0 otherwise.
+      - name: written_off_cents
+        description: Unpaid balance at write-off (bad debt); 0 unless written off.
+      - name: succeeded_payment_count
+        description: Payments received. More than one means partial payments (invoice payment only).
+      - name: card_attempt_count
+        description: Card charge attempts, including retries.
+      - name: failed_attempt_count
+        description: Failed card charge attempts.
+      - name: days_to_pay
+        description: Whole days from issue to full payment (0 = within 24 hours); null unless fully paid.
+      - name: has_partial_payments
+        description: Paid in more than one payment.
+      - name: issued_at
+        description: When the invoice was issued (UTC).
+      - name: due_at
+        description: Due date (UTC); equals issued_at for card invoices.
+      - name: first_payment_at
+        description: First money received (UTC).
+      - name: paid_at
+        description: When cumulative payments covered the amount due (UTC).
+      - name: overdue_from
+        description: When the invoice became overdue (UTC); null if it never was.
+      - name: written_off_at
+        description: When the invoice was written off (UTC).
+
+  - name: int_card_dunning_outcomes
+    description: >
+      One row per card invoice whose first charge failed: how dunning (weekly retries at exactly +7 and +14 days)
+      turned out. recovered_on_retry: a scheduled retry succeeded. recovered_after_card_update: an attempt off
+      the retry schedule succeeded; this is INFERRED, since no field records a card update, but in this data
+      off-schedule attempts only ever succeed (the pattern of a card update triggering an immediate charge),
+      guarded by assert_card_failures_only_on_retry_schedule. written_off: dunning ran out or the subscription
+      lapsed. in_dunning: still retrying at the end of the data. Basis for recovery rates.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: int_card_dunning_outcomes_recovered_iff_recovered_at
+          arguments:
+            expression: "(dunning_outcome like 'recovered%') = (recovered_at is not null)"
+      - dbt_utils.expression_is_true:
+          name: int_card_dunning_outcomes_written_off_iff_written_off_at
+          arguments:
+            expression: "(dunning_outcome = 'written_off') = (written_off_at is not null)"
+    columns:
+      - name: invoice_id
+        description: Primary key; the card invoice.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int_invoice_payment_summary')
+                field: invoice_id
+      - name: subscription_id
+        description: The subscription billed.
+      - name: account_id
+        description: The customer.
+      - name: dunning_outcome
+        description: recovered_on_retry, recovered_after_card_update (inferred), written_off, or in_dunning.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["recovered_on_retry", "recovered_after_card_update", "written_off", "in_dunning"]
+      - name: first_failure_reason
+        description: Why the first charge failed.
+      - name: attempt_count
+        description: Charge attempts on the invoice, including the first.
+      - name: recovery_attempt_number
+        description: The attempt number that succeeded; null unless recovered.
+      - name: days_to_recover
+        description: Whole days from the first failure to the successful charge; null unless recovered.
+      - name: first_failed_at
+        description: The failed first charge (UTC); equals the invoice's issue time.
+      - name: recovered_at
+        description: The successful charge (UTC).
+      - name: written_off_at
+        description: When the invoice was written off (UTC).
+
+  - name: int_invoice_month_end_balances
+    description: >
+      Accounts receivable at each reporting month-end: one row per invoice per month-end cutoff at which money was
+      owed on it (issued, not yet fully paid, not yet written off). balance_cents is the amount due minus payments
+      received before the cutoff. days_past_due is 0 until due_at, then whole days past due rounded up. Aging
+      buckets: current, 1-30, 31-60, 61-90, 90+. Written-off invoices leave receivables at write-off, so balances
+      can't age past 14 days (card) or 60 days (invoice payment). Input for AR aging.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [invoice_id, month_start_date_et]
+      - dbt_utils.expression_is_true:
+          name: int_invoice_month_end_balances_balance_positive
+          arguments:
+            expression: "balance_cents > 0 and balance_cents <= amount_due_cents"
+      - dbt_utils.expression_is_true:
+          name: int_invoice_month_end_balances_no_aging_past_write_off
+          arguments:
+            expression: "days_past_due <= iff(payment_method = 'card', 14, 60)"
+    columns:
+      - name: invoice_month_id
+        description: Primary key; surrogate key of invoice_id and month_start_date_et.
+        data_tests:
+          - unique
+          - not_null
+      - name: invoice_id
+        description: The invoice owed.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int_invoice_payment_summary')
+                field: invoice_id
+      - name: subscription_id
+        description: The subscription billed.
+      - name: account_id
+        description: The customer.
+      - name: payment_method
+        description: card or invoice.
+      - name: month_start_date_et
+        description: The reporting month (first day, reporting timezone).
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('int_reporting_months')
+                field: month_start_date_et
+      - name: month_end_date_et
+        description: Last day of the reporting month.
+      - name: aging_bucket
+        description: current, 1-30, 31-60, 61-90, or 90+ days past due at the month-end cutoff.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["current", "1-30", "31-60", "61-90", "90+"]
+      - name: amount_due_cents
+        description: Invoice total.
+      - name: balance_cents
+        description: Owed at the cutoff (amount due minus payments received before it).
+      - name: days_past_due
+        description: 0 until due_at; then days past due at the cutoff, rounded up.
+      - name: is_month_closed
+        description: False for the provisional latest month.
+      - name: due_at
+        description: Due date (UTC).
+      - name: month_ended_at
+        description: The month-end cutoff (UTC) the balance was taken at.
