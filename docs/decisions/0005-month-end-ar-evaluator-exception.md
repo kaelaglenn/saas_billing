@@ -1,6 +1,6 @@
 # 0005. Let month-end AR read payments directly and through the invoice summary
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-17
 - **Related:** [0004](0004-conformed-calendar-evaluator-exception.md), `int_invoice_month_end_balances`,
   `int_invoice_payment_summary`, `seeds/dbt_project_evaluator_exceptions.csv`
