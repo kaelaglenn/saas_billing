@@ -94,6 +94,10 @@ into days or months: billing periods start at 00:00 UTC, which is 7 or 8 p.m. ET
 - `status` is as of the end of the window: card `paid` 93,594 / `uncollectible` 548 / `past_due` 54; invoice
   payment `paid` 2,921 / `uncollectible` 90 / `open` 58 / `past_due` 29 / `partially_paid` 5.
 - No paid date column; derive it from `payments`.
+- A `lapsed` event names one invoice (`lapse_invoice_id`), but every unpaid invoice on the subscription is
+  written off when it lapses. 547 of the 548 `uncollectible` card invoices are named by a `lapsed` event; the
+  other (`inv_0044431`) is a proration issued during the renewal's dunning and written off with it. Find
+  write-offs from `status` or delinquency, not from `lapse_invoice_id` alone.
 
 **invoice_line_items**
 - No nulls, no duplicates.
@@ -107,3 +111,6 @@ into days or months: billing periods start at 00:00 UTC, which is 7 or 8 p.m. ET
 - `failure_reason` is null for every succeeded payment and set for every failed one (7,633 failed card attempts).
 - Failed attempts record the amount that was attempted; only `succeeded` rows are money received.
 - 295 invoices were paid in more than one succeeded payment (partial payments).
+- Card retries: failed card attempts happen only at issue or exactly 7 and 14 days later (after dedup: 7,618
+  failed attempts, 2,791 of them retries). Attempts off that schedule always succeed; nothing records why, but
+  the pattern is a customer updating their card. Guarded by `assert_card_failures_only_on_retry_schedule`.
