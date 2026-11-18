@@ -1,0 +1,77 @@
+# Build production (the ANALYTICS database) with dbt, and keep the artifacts later jobs need.
+#
+# Runs when a merge to main changes the dbt project, on a manual run, and every Monday. The data is a fixed
+# snapshot, so the weekly run isn't about freshness: it's a canary for things the code didn't change (an
+# expired key, a revoked grant, a package that no longer installs, a suspended Snowflake account).
+#
+# Connects as DBT_PROD_SVC (role TRANSFORMER), the only user that can write to ANALYTICS. Models are built in
+# place: each table is replaced as it's built, then tested. CI has already built and tested the same code on the
+# same raw data, so a blue/green build-then-swap would add complexity without removing real risk here.
+#
+# On success it uploads manifest.json (what slim CI compares PRs against) and the dbt docs site.
+name: dbt deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "transform/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/dbt_deploy.yml"
+  schedule:
+    - cron: "0 12 * * 1"  # Mondays 12:00 UTC (7 or 8 a.m. Eastern)
+  workflow_dispatch:
+
+# One production build at a time. Never cancel one midway: a newer run waits for it instead.
+concurrency:
+  group: dbt-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  SNOWFLAKE_ACCOUNT: ${{ vars.SNOWFLAKE_ACCOUNT }}
+  SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PROD_PRIVATE_KEY }}
+
+jobs:
+  deploy:
+    name: dbt build (prod)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Actions are pinned to commit SHAs (a tag can be moved; a SHA can't). Version in the comment.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Install dbt packages
+        working-directory: transform
+        run: uv run dbt deps
+
+      - name: dbt build (models, seeds, tests)
+        working-directory: transform
+        run: uv run dbt build --target prod
+
+      - name: Generate docs
+        working-directory: transform
+        run: uv run dbt docs generate --target prod
+
+      # Only after a successful build, so slim CI always compares against a production state that exists.
+      - name: Upload manifest and docs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: dbt-prod-artifacts
+          path: |
+            transform/target/manifest.json
+            transform/target/run_results.json
+            transform/target/catalog.json
+            transform/target/index.html
+          retention-days: 90
+          if-no-files-found: error

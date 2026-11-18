@@ -66,13 +66,15 @@ To start over, [teardown.sql](teardown.sql) drops everything bootstrap.sql creat
 
 ## GitHub Actions settings
 
-The [dbt CI workflow](../.github/workflows/dbt_ci.yml) connects as `DBT_CI_SVC` using two repository settings
+The [dbt CI workflow](../.github/workflows/dbt_ci.yml) connects as `DBT_CI_SVC` and the
+[deploy workflow](../.github/workflows/dbt_deploy.yml) as `DBT_PROD_SVC`, using three repository settings
 (GitHub → Settings → Secrets and variables → Actions):
 
 | Name | Kind | Value |
 |---|---|---|
 | `SNOWFLAKE_ACCOUNT` | variable | the account identifier |
 | `SNOWFLAKE_CI_PRIVATE_KEY` | secret | contents of `~/.snowflake/keys/DBT_CI_SVC.p8` |
+| `SNOWFLAKE_PROD_PRIVATE_KEY` | secret | contents of `~/.snowflake/keys/DBT_PROD_SVC.p8` |
 
 ```bash
 gh variable set SNOWFLAKE_ACCOUNT --body "<ORG>-<ACCOUNT>"
@@ -82,5 +84,13 @@ gh variable set SNOWFLAKE_ACCOUNT --body "<ORG>-<ACCOUNT>"
 gh secret set SNOWFLAKE_CI_PRIVATE_KEY < ~/.snowflake/keys/DBT_CI_SVC.p8
 ```
 
-**Moving to a new account** (e.g. a new trial): run the bootstrap, register keys, then update both settings
+```bash
+gh secret set SNOWFLAKE_PROD_PRIVATE_KEY < ~/.snowflake/keys/DBT_PROD_SVC.p8
+```
+
+The prod key is a repository secret while the repo is private (GitHub's free plan has no environments for
+private repos). When the repo goes public, move it into a `production` environment that only `main` can use, so
+no workflow running on another branch can read it.
+
+**Moving to a new account** (e.g. a new trial): run the bootstrap, register keys, then update all three settings
 with the commands above.
