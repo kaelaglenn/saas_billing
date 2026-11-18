@@ -147,6 +147,12 @@ whole project (models, tests, `dbt_project_evaluator`) into a per-PR schema, `AN
 as the `DBT_CI_SVC` service user. The schema is rebuilt from empty on every run and dropped when the PR closes
 ([cleanup](.github/workflows/dbt_ci_cleanup.yml)). Setup: [GitHub Actions settings](snowflake/README.md#github-actions-settings).
 
+Merges that change the dbt project [deploy to production](.github/workflows/dbt_deploy.yml): `dbt build` into
+`ANALYTICS` as `DBT_PROD_SVC`, the only user that can write there. The same workflow runs every Monday as a
+canary (the data is a fixed snapshot, so it checks that keys, grants, packages and the account still work) and
+can be run by hand from the Actions tab. Each successful run keeps `manifest.json` and the docs site as a
+workflow artifact for 90 days.
+
 After cloning, install the git hooks:
 
 ```bash
