@@ -9,4 +9,4 @@ aren't rewritten; a new record supersedes an old one. Write new ones with the `/
 | [0002](0002-report-in-eastern-time-store-in-utc.md) | Report in Eastern Time; store and compute in UTC | Accepted | 2026-10-23 |
 | [0003](0003-trial-conversion-on-matured-trials.md) | Measure trial conversion on matured trials only | Accepted | 2026-10-25 |
 | [0004](0004-conformed-calendar-evaluator-exception.md) | Let facts and their rollups join the reporting calendar directly | Accepted | 2026-10-23 |
-| [0005](0005-month-end-ar-evaluator-exception.md) | Let month-end AR read payments directly and through the invoice summary | Proposed | 2026-11-17 |
+| [0005](0005-month-end-ar-evaluator-exception.md) | Let month-end AR read payments directly and through the invoice summary | Accepted | 2026-11-17 |
