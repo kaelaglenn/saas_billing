@@ -21,6 +21,7 @@ load-raw = "raw_loader.load:main"
 [dependency-groups]
 dev = [
     "dlt[duckdb]>=1.30.0",
+    "duckdb>=1.5.6",
     "pre-commit>=4.6.2",
     "pytest>=8",
     "ruff>=0.6",
