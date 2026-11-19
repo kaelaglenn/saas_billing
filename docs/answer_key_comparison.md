@@ -50,4 +50,64 @@ mismatched values). Otherwise compare the aggregate.
 
 ## Results
 
-_Filled in after the comparison._
+Compared on 2026-11-19: production marts and staging (built from `pre-answer-key`) against `data/truth/`. Only
+`data/truth/` was read. The generator's `truth.py` and `messiness.py` stayed unread; nothing below needed them.
+
+**No bugs found.** Every answer-key row has a matching row in our models. The differences are three definition
+choices, each explained below.
+
+### What the answer key covers
+
+The key has five files: `subscription_history`, `mrr_monthly`, `monthly_summary`, `churn_events` and
+`seeded_anomalies`. It has nothing on invoices, payments, AR or dunning, so plan areas 8–10 rest on the checks
+made while building them (source invoice status, lapse events, roll-forward identities; see PRs #18 and #19).
+It also has no per-trial or per-account file, so areas 6 and 7 are compared only through the monthly counts.
+
+| # | Area | Key | Matched | Differences |
+|---|---|---|---|---|
+| 1 | Clean source rows | `seeded_anomalies` (2,625) | all 5 anomaly types handled as the key says | none |
+| 2 | Subscription current state | `subscription_history` where current (30,516) | 30,516 of 30,516, every attribute | none |
+| 3 | Subscription history | `subscription_history` (80,116) | 80,116 of 80,116, every attribute and both validity bounds | none |
+| 4 | Month-end MRR | `mrr_monthly` (150,883) | 150,883 of 150,883 on status, plan, seats, frequency, MRR | 1 row's movement (A); 49,258 rows only ours, by design (B) |
+| 5 | MRR movements | `monthly_summary` (33 months) | ending MRR, starting and ending subscriptions, reactivations, cancellations: all 33 months | lapsed churn lower by 13 across 12 months (C) |
+| 6 | Trials | `monthly_summary` | trial starts and conversions: all 33 months | none |
+| — | Churn events | `churn_events` (3,088) | 3,088 of 3,088 on type, requested, effective, reporting date | lapse reason (D) |
+| 7–10 | Customers, invoices, AR, dunning | no key | — | — |
+
+### Area 1: every seeded anomaly handled correctly
+
+| Anomaly | Key | Staging |
+|---|---|---|
+| Retried webhooks: same content, new `event_id` (remove) | 784 | 784 removed, 784 originals kept |
+| Payments loaded twice (remove one copy) | 209 | raw 104,814 → staged 104,605: 209 removed, each payment kept once |
+| Real second identical seat increase on the same day (keep both) | 60 pairs | all 120 events kept |
+| Seat change in the repeated DST hour | 4 | kept, with correct times (history matches exactly) |
+| Late-arriving events | 1,568 | all kept |
+
+The lookalikes are the trap: deduplicating on content would have dropped 60 real seat increases. The
+convention of removing exact copies only, with a natural-key test, kept them.
+
+### Differences, classified
+
+- **A. `sub_001882`, January 2024: different, defensible definition.** Imported 2024-01-01 00:00 UTC at 8,700
+  cents and upgraded to 11,600 at 00:13 UTC, which is 19:13 on December 31 in Eastern Time. Reporting in ET
+  ([ADR 0002](decisions/0002-report-in-eastern-time-store-in-utc.md)) puts the upgrade in December, before the
+  first reporting month, so it's in our opening balance. The key counts a 2,900-cent January expansion. Same
+  ending MRR every month. Keep ours.
+- **B. Rows only in our `fct_subscription_months`: by design.** 45,391 trialing or expired-trial months at 0 MRR,
+  3,854 rows for the December 2023 opening-balance month, and the 13 subscriptions in C. None carry MRR outside
+  the opening month.
+- **C. 13 subscriptions that converted and lapsed in the same month: different, defensible definition.** The
+  key counts each as a new subscription and a lapse in that month. Our bridge counts subscriptions at
+  month-ends, so one that is never live at a month-end appears in neither. Both satisfy starting + new +
+  reactivated − churned = ending in every month, and the net effect is 0. `fct_trials` counts them as
+  conversions on both sides. The cost is that our bridge's involuntary churn (and so logo churn rate) is lower
+  by 1–2 in 12 of 33 months.
+- **D. Lapse reason: different column, not a bug.** The key gives lapses a reason from how the customer paid
+  (`payment_failed` for card, 547; `invoice_unpaid` for invoice payment, 85). Our `cancel_reason` is the reason a
+  customer gave when asking to cancel, so it's null for lapses (4 lapsed subscriptions had asked to cancel
+  first). The key's reason follows from `payment_method`, which we already have.
+
+### Not knowable from the raw data
+
+Nothing. Every difference above can be explained from the raw data and our documented rules.
