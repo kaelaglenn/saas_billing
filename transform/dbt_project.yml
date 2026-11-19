@@ -43,6 +43,8 @@ models:
       # that would break consumers fails the build instead of silently changing a table.
       +contract:
         enforced: true
+      # ...and declared public, since exposures (models/exposures.yml) read them.
+      +access: public
 
   # Audits the project's structure (naming, DAG shape, test and doc coverage). Dev and CI only, never prod.
   dbt_project_evaluator:

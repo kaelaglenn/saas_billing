@@ -1,0 +1,22 @@
+exposures:
+  - name: portfolio_case_study
+    label: Portfolio case study (kaelaglenn.com)
+    type: dashboard
+    maturity: low   # not published yet; raise to medium once the page is live
+    url: https://kaelaglenn.com/projects/saas-billing
+    description: >
+      The public write-up of this project, on the kaelaglenn-site repo's static site. Its charts (MRR bridge by
+      month, trial conversion by start month, card dunning outcomes) and headline counts come from a static
+      export of these production marts: scripts/export_site_charts.py writes JSON that the site's build turns into
+      SVG. The page never queries Snowflake, so re-export after a change to any of these models.
+    depends_on:
+      - ref('fct_mrr_bridge')
+      - ref('fct_trials')
+      - ref('fct_card_dunning_cases')
+      - ref('dim_subscriptions')
+      - ref('dim_accounts')
+      - ref('fct_invoices')
+      - ref('fct_payments')
+      - ref('dim_subscription_history')
+    owner:
+      name: kaelaglenn
