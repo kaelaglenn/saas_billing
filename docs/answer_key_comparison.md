@@ -53,6 +53,9 @@ mismatched values). Otherwise compare the aggregate.
 Compared on 2026-11-19: production marts and staging (built from `pre-answer-key`) against `data/truth/`. Only
 `data/truth/` was read. The generator's `truth.py` and `messiness.py` stayed unread; nothing below needed them.
 
+To rerun: `uv run python scripts/compare_answer_key.py` (see [the script](../scripts/compare_answer_key.py)
+for options).
+
 **No bugs found.** Every answer-key row has a matching row in our models. The differences are three definition
 choices, each explained below.
 
@@ -102,7 +105,8 @@ convention of removing exact copies only, with a natural-key test, kept them.
   month-ends, so one that is never live at a month-end appears in neither. Both satisfy starting + new +
   reactivated − churned = ending in every month, and the net effect is 0. `fct_trials` counts them as
   conversions on both sides. The cost is that our bridge's involuntary churn (and so logo churn rate) is lower
-  by 1–2 in 12 of 33 months.
+  by 1–2 in 12 of 33 months. Kept, as the standard form of an MRR bridge:
+  [ADR 0008](decisions/0008-mrr-bridge-counts-month-end-states.md).
 - **D. Lapse reason: different column, not a bug.** The key gives lapses a reason from how the customer paid
   (`payment_failed` for card, 547; `invoice_unpaid` for invoice payment, 85). Our `cancel_reason` is the reason a
   customer gave when asking to cancel, so it's null for lapses (4 lapsed subscriptions had asked to cancel
