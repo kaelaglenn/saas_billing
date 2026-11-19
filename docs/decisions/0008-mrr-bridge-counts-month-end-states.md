@@ -1,6 +1,6 @@
 # 0008. The MRR bridge counts subscriptions at month-ends, so a same-month convert-and-lapse is neither new nor churned
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-19
 - **Related:** `fct_mrr_bridge`, `fct_subscription_months`, `fct_trials`,
   [answer-key comparison](../answer_key_comparison.md) (difference C)
