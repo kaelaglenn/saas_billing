@@ -17,11 +17,10 @@ SNOWFLAKE_PRIVATE_KEY_PATH), as role DEVELOPER.
 from __future__ import annotations
 
 import argparse
-import os
 from pathlib import Path
 
 import duckdb
-import snowflake.connector
+from _snowflake import connect
 
 TRUTH = Path(__file__).resolve().parents[1] / "data" / "truth"
 
@@ -36,14 +35,7 @@ MARTS = [
 
 def load_ours(db: duckdb.DuckDBPyConnection, database: str, marts: str, staging: str) -> None:
     """Copy our models into DuckDB as tables named like the models."""
-    conn = snowflake.connector.connect(
-        account=os.environ["SNOWFLAKE_ACCOUNT"],
-        user=os.environ["SNOWFLAKE_USER"],
-        private_key_file=os.environ["SNOWFLAKE_PRIVATE_KEY_PATH"],
-        role="DEVELOPER",
-        warehouse="TRANSFORMING_WH",
-        database=database,
-    )
+    conn = connect(database)
     queries = {name: f"select * from {marts}.{name}" for name in MARTS}
     queries["stg_event_ids"] = f"select event_id as id from {staging}.stg_billing__subscription_events"
     queries["stg_payment_ids"] = f"select payment_id as id from {staging}.stg_billing__payments"

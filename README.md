@@ -156,6 +156,11 @@ canary (the data is a fixed snapshot, so it checks that keys, grants, packages a
 can be run by hand from the Actions tab. Each successful run keeps `manifest.json` and the docs site as a
 workflow artifact for 90 days.
 
+The charts on the project's [portfolio page](https://kaelaglenn.com/projects/saas-billing) come from a static
+export of production marts: [export_site_charts.py](scripts/export_site_charts.py) writes small JSON files that
+the site's build turns into SVG, so the page never queries Snowflake. The page is declared as a dbt exposure
+([exposures.yml](transform/models/exposures.yml)), so the marts it reads show it as a downstream consumer.
+
 After cloning, install the git hooks:
 
 ```bash
