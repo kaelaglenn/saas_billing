@@ -115,7 +115,9 @@ models:
       MRR bridge (roll-forward, or MRR walk): one row per reporting month explaining how MRR moved from the
       previous month-end to this one: ending = starting + new + expansion + reactivation + contraction + churned.
       Movements are signed (contraction and churned negative) and sum to net_new_mrr_cents. Subscription counts
-      follow the same flow for paying subscriptions. The opening balance month has an ending balance only; its
+      follow the same flow for paying subscriptions, compared month-end to month-end: a subscription that
+      converts and lapses between two month-ends is in neither new nor churned (13 over the data; ADR 0008). Count
+      churn events from dim_subscriptions (ended_at, end_reason) when every lapse matters. The opening balance month has an ending balance only; its
       starting balance and movements are null because activity before the data starts is unknown. The latest
       month may be provisional (is_month_closed = false).
     data_tests:
@@ -185,13 +187,15 @@ models:
         description: Paying subscriptions at the previous month-end. Null for the opening month.
         data_type: number(38, 0)
       - name: new_subscriptions
-        description: Subscriptions paying for the first time this month.
+        description: >
+          Subscriptions with MRR at this month-end and none at the previous one, other than reactivations (counted
+          in reactivated_subscriptions).
         data_type: number(38, 0)
       - name: reactivated_subscriptions
         description: Returning accounts' new subscriptions paying this month.
         data_type: number(38, 0)
       - name: churned_subscriptions
-        description: Subscriptions that stopped paying this month.
+        description: Subscriptions with MRR at the previous month-end and none at this one.
         data_type: number(38, 0)
       - name: voluntarily_churned_subscriptions
         description: Churned by cancellation.
