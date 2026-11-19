@@ -10,4 +10,5 @@ aren't rewritten; a new record supersedes an old one. Write new ones with the `/
 | [0003](0003-trial-conversion-on-matured-trials.md) | Measure trial conversion on matured trials only | Accepted | 2026-10-25 |
 | [0004](0004-conformed-calendar-evaluator-exception.md) | Let facts and their rollups join the reporting calendar directly | Accepted | 2026-10-23 |
 | [0005](0005-month-end-ar-evaluator-exception.md) | Let month-end AR read payments directly and through the invoice summary | Accepted | 2026-11-17 |
-| [0006](0006-production-deploy-in-place-with-repo-secret.md) | Deploy production in place, with the key as a repository secret until the repo is public | Proposed | 2026-11-18 |
+| [0006](0006-production-deploy-in-place-with-repo-secret.md) | Deploy production in place, with the key as a repository secret until the repo is public | Accepted | 2026-11-18 |
+| [0007](0007-slim-ci-against-prod-manifest.md) | Slim CI against the production manifest, with full-build fallbacks | Proposed | 2026-11-19 |

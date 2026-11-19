@@ -1,6 +1,6 @@
 # 0006. Deploy production in place, with the key as a repository secret until the repo is public
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-18
 - **Related:** [PR #21](https://github.com/kaelaglenn/saas_billing/pull/21), `.github/workflows/dbt_deploy.yml`,
   `snowflake/README.md` (GitHub Actions settings)
