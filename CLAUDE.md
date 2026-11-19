@@ -57,9 +57,10 @@ so it's an outward action: ask first.
   confirm.
 - Profile the data before designing a model: row counts, natural-key duplicates, null patterns, JSON shape,
   timezones. Justify decisions with business rules and the data.
-- **Never read or model toward the answer key**: `data/truth/`, `generator/billing_generator/truth.py`,
-  `generator/billing_generator/messiness.py`. On a real team there is none. Comparing against it happens once,
-  at the end of the project, when the user says so.
+- **Never model toward the answer key**: `data/truth/`, `generator/billing_generator/truth.py`,
+  `generator/billing_generator/messiness.py`. On a real team there is none. The one comparison against
+  `data/truth/` is done (tag `pre-answer-key`, results in `docs/answer_key_comparison.md`); any fix it leads to
+  is labelled "found by the answer key". The two generator files are still unread; don't open them.
 - Verify with evidence independent of the code under test (the source's own current-state tables, invoice status,
   reconciliations computed another way). Avoid tests that are true by construction, and prove a singular test
   actually compared rows (non-empty join), so it can't pass on empty.

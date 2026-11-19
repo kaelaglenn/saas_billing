@@ -1,6 +1,6 @@
 # 0007. Slim CI against the production manifest, with full-build fallbacks
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-19
 - **Related:** [ADR 0006](0006-production-deploy-in-place-with-repo-secret.md), `.github/workflows/dbt_ci.yml`,
   `.github/workflows/dbt_deploy.yml`
