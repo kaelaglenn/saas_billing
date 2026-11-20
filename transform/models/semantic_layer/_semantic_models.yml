@@ -1,0 +1,238 @@
+# Semantic models: how MetricFlow reads each mart. Each sits on a mart at its own grain (never on a rollup like
+# fct_mrr_bridge), so every metric can be sliced by any dimension reachable through an entity. Time dimensions are
+# the *_date_et columns, so metrics report in the reporting timezone (ADR 0002). Money stays in integer cents.
+
+semantic_models:
+
+  - name: subscription_months
+    description: >
+      One row per subscription per reporting month-end (fct_subscription_months). MRR is a balance: summed across
+      subscriptions, but taken at the month-end over time, never summed across months.
+    model: ref('fct_subscription_months')
+    defaults:
+      agg_time_dimension: month_end_date_et
+    entities:
+      - name: subscription_month
+        type: primary
+        expr: subscription_month_id
+      - name: subscription
+        type: foreign
+        expr: subscription_id
+      - name: account
+        type: foreign
+        expr: account_id
+    dimensions:
+      - name: month_end_date_et
+        type: time
+        type_params:
+          time_granularity: month
+      - name: subscription_status
+        type: categorical
+      - name: plan
+        type: categorical
+      - name: billing_frequency
+        type: categorical
+      - name: movement_type
+        type: categorical
+    measures:
+      - name: mrr
+        description: MRR at the month-end (cents). Semi-additive over time.
+        agg: sum
+        expr: mrr_cents
+        non_additive_dimension:
+          name: month_end_date_et
+          window_choice: max
+      - name: paying_subscriptions
+        description: Subscriptions with MRR at the month-end. Semi-additive over time.
+        agg: sum
+        expr: case when mrr_cents > 0 then 1 else 0 end
+        non_additive_dimension:
+          name: month_end_date_et
+          window_choice: max
+      - name: new_mrr
+        description: MRR from subscriptions paying for the first time this month (cents).
+        agg: sum
+        expr: case when movement_type = 'new' then mrr_change_cents else 0 end
+      - name: expansion_mrr
+        agg: sum
+        expr: case when movement_type = 'expansion' then mrr_change_cents else 0 end
+      - name: reactivation_mrr
+        agg: sum
+        expr: case when movement_type = 'reactivation' then mrr_change_cents else 0 end
+      - name: contraction_mrr
+        description: Negative (cents).
+        agg: sum
+        expr: case when movement_type = 'contraction' then mrr_change_cents else 0 end
+      - name: churned_mrr
+        description: Negative (cents).
+        agg: sum
+        expr: case when movement_type = 'churn' then mrr_change_cents else 0 end
+
+  - name: accounts
+    description: One row per customer account (dim_accounts), for slicing any metric by company attributes.
+    model: ref('dim_accounts')
+    entities:
+      - name: account
+        type: primary
+        expr: account_id
+    dimensions:
+      - name: industry
+        type: categorical
+      - name: company_size_band
+        type: categorical
+      - name: customer_status
+        type: categorical
+
+  - name: trials
+    description: One row per trial (fct_trials). Conversion counts matured trials only (ADR 0003).
+    model: ref('fct_trials')
+    defaults:
+      agg_time_dimension: trial_start_date_et
+    entities:
+      - name: trial
+        type: primary
+        expr: subscription_id
+      - name: account
+        type: foreign
+        expr: account_id
+    dimensions:
+      - name: trial_start_date_et
+        type: time
+        type_params:
+          time_granularity: day
+      - name: trial_outcome
+        type: categorical
+      - name: trial_plan
+        type: categorical
+        expr: plan
+    measures:
+      - name: trial_starts
+        agg: count
+        expr: subscription_id
+      - name: matured_trials
+        agg: sum
+        expr: case when is_matured then 1 else 0 end
+      - name: converted_matured_trials
+        agg: sum
+        expr: case when is_matured and trial_outcome = 'converted' then 1 else 0 end
+
+  - name: invoices
+    description: One row per invoice (fct_invoices).
+    model: ref('fct_invoices')
+    defaults:
+      agg_time_dimension: issued_date_et
+    entities:
+      - name: invoice
+        type: primary
+        expr: invoice_id
+      - name: account
+        type: foreign
+        expr: account_id
+    dimensions:
+      - name: issued_date_et
+        type: time
+        type_params:
+          time_granularity: day
+      - name: invoice_type
+        type: categorical
+      - name: invoice_payment_method
+        type: categorical
+        expr: payment_method
+      - name: payment_outcome
+        type: categorical
+    measures:
+      - name: invoiced_amount
+        description: Amount due on invoices issued (cents).
+        agg: sum
+        expr: amount_due_cents
+
+  - name: payments
+    description: One row per payment attempt (fct_payments). Only succeeded attempts are money received.
+    model: ref('fct_payments')
+    defaults:
+      agg_time_dimension: attempted_date_et
+    entities:
+      - name: payment
+        type: primary
+        expr: payment_id
+      - name: account
+        type: foreign
+        expr: account_id
+    dimensions:
+      - name: attempted_date_et
+        type: time
+        type_params:
+          time_granularity: day
+      - name: payment_status
+        type: categorical
+    measures:
+      - name: collected_amount
+        description: Money received from succeeded attempts (cents).
+        agg: sum
+        expr: case when is_succeeded then received_amount_cents else 0 end
+
+  - name: ar_month_end_balances
+    description: >
+      One row per invoice per month-end while money is owed (fct_ar_month_end_balances). AR is a balance:
+      summed across invoices, taken at the month-end over time.
+    model: ref('fct_ar_month_end_balances')
+    defaults:
+      agg_time_dimension: ar_month_end_date_et
+    entities:
+      - name: invoice_month
+        type: primary
+        expr: invoice_month_id
+      - name: account
+        type: foreign
+        expr: account_id
+    dimensions:
+      - name: ar_month_end_date_et
+        type: time
+        expr: month_end_date_et
+        type_params:
+          time_granularity: month
+      - name: aging_bucket
+        type: categorical
+      - name: ar_payment_method
+        type: categorical
+        expr: payment_method
+    measures:
+      - name: ending_ar
+        description: Accounts receivable at the month-end (cents). Semi-additive over time.
+        agg: sum
+        expr: balance_cents
+        non_additive_dimension:
+          name: ar_month_end_date_et
+          window_choice: max
+
+  - name: card_dunning_cases
+    description: One row per card invoice whose first charge failed (fct_card_dunning_cases).
+    model: ref('fct_card_dunning_cases')
+    defaults:
+      agg_time_dimension: first_failed_date_et
+    entities:
+      - name: dunning_case
+        type: primary
+        expr: invoice_id
+      - name: account
+        type: foreign
+        expr: account_id
+    dimensions:
+      - name: first_failed_date_et
+        type: time
+        type_params:
+          time_granularity: day
+      - name: dunning_outcome
+        type: categorical
+      - name: first_failure_reason
+        type: categorical
+    measures:
+      - name: dunning_cases
+        agg: count
+        expr: invoice_id
+      - name: resolved_dunning_cases
+        agg: sum
+        expr: case when is_resolved then 1 else 0 end
+      - name: recovered_dunning_cases
+        agg: sum
+        expr: case when is_recovered then 1 else 0 end

@@ -1,5 +1,21 @@
 models:
 
+  - name: dim_dates
+    description: >
+      One row per calendar date in the reporting timezone (America/New_York), from the first day of the opening
+      balance month through the last month-end. The Semantic Layer's time spine: MetricFlow joins metric_time to
+      it. Covers every reporting month (tested from dim_reporting_months).
+    time_spine:
+      standard_granularity_column: date_day
+    columns:
+      - name: date_day
+        description: Primary key. A calendar date in the reporting timezone.
+        data_type: date
+        granularity: day
+        data_tests:
+          - unique
+          - not_null
+
   - name: dim_reporting_months
     description: >
       The reporting calendar: one row per month in the reporting timezone (America/New_York), from the opening
@@ -12,9 +28,18 @@ models:
         data_tests:
           - unique
           - not_null
+          - relationships:  # the time spine covers every reporting month
+              arguments:
+                to: ref('dim_dates')
+                field: date_day
       - name: month_end_date_et
         description: Last day of the month (reporting timezone).
         data_type: date
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_dates')
+                field: date_day
       - name: month_label
         description: The month as YYYY-MM, for display.
         data_type: varchar

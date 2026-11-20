@@ -20,6 +20,7 @@ load-raw = "raw_loader.load:main"
 
 [dependency-groups]
 dev = [
+    "dbt-metricflow[dbt-snowflake]==0.15.0",
     "dlt[duckdb]>=1.30.0",
     "duckdb>=1.5.6",
     "pre-commit>=4.6.2",
