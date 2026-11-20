@@ -136,6 +136,27 @@ sqlfluff lint transform/models
 
 `sqlfluff fix transform/models` applies the fixes it can make automatically.
 
+### Metrics (Semantic Layer)
+
+The governed metric definitions live in [transform/models/semantic_layer/](transform/models/semantic_layer/):
+semantic models on each mart at its own grain, and metrics built on them (MRR and its movements, paying
+subscriptions, trial conversion, invoiced, collected, ending AR, card recovery). dbt validates them on every parse.
+Query them locally with the MetricFlow CLI (a dev dependency), from `transform/` after a `dbt parse`, since `mf`
+reads `target/semantic_manifest.json`, not the YAML:
+
+```bash
+mf query --metrics mrr,net_new_mrr,paying_subscriptions --group-by metric_time__month --order metric_time__month
+```
+
+```bash
+mf query --metrics mrr --group-by metric_time__quarter,account__industry
+```
+
+MRR and ending AR are balances: summed across subscriptions or invoices, but taken at the month-end over time, so a
+quarter shows its last month-end, not three months added up. Amounts are in cents; time is the reporting timezone.
+`dim_dates` is the daily time spine MetricFlow needs. The hosted Semantic Layer APIs (for BI tools) need dbt Cloud;
+everything here runs on dbt Core.
+
 ## How we work
 
 All changes land on `main` through pull requests. Branch per change (`feat/…`, `fix/…`, `chore/…`, `ci/…`),

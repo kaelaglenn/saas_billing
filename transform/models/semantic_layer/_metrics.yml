@@ -1,0 +1,138 @@
+# Metrics: the governed definitions. Amounts are in cents, like the marts. Query locally with the MetricFlow CLI,
+# e.g. `uv run --no-sync mf query --metrics mrr,net_new_mrr --group-by metric_time__month` from transform/.
+
+metrics:
+
+  # --- MRR (subscription_months) ---
+  - name: mrr
+    label: MRR (cents)
+    description: Monthly recurring revenue at the month-end. A balance; for a month, use the month-end value.
+    type: simple
+    type_params:
+      measure: mrr
+  - name: paying_subscriptions
+    label: Paying subscriptions
+    description: Subscriptions with MRR at the month-end.
+    type: simple
+    type_params:
+      measure: paying_subscriptions
+  - name: new_mrr
+    label: New MRR (cents)
+    description: MRR from subscriptions paying at this month-end and not the previous one, other than reactivations.
+    type: simple
+    type_params:
+      measure: new_mrr
+  - name: expansion_mrr
+    label: Expansion MRR (cents)
+    description: MRR increases on subscriptions paying at both month-ends.
+    type: simple
+    type_params:
+      measure: expansion_mrr
+  - name: reactivation_mrr
+    label: Reactivation MRR (cents)
+    description: MRR from reactivated subscriptions in their first paying month.
+    type: simple
+    type_params:
+      measure: reactivation_mrr
+  - name: contraction_mrr
+    label: Contraction MRR (cents)
+    description: MRR decreases on subscriptions paying at both month-ends. Negative.
+    type: simple
+    type_params:
+      measure: contraction_mrr
+  - name: churned_mrr
+    label: Churned MRR (cents)
+    description: MRR lost from subscriptions paying at the previous month-end and not this one. Negative.
+    type: simple
+    type_params:
+      measure: churned_mrr
+  - name: net_new_mrr
+    label: Net new MRR (cents)
+    description: The month's change in MRR; ending MRR = starting MRR + net new MRR (see fct_mrr_bridge).
+    type: derived
+    type_params:
+      expr: new_mrr + expansion_mrr + reactivation_mrr + contraction_mrr + churned_mrr
+      metrics:
+        - name: new_mrr
+        - name: expansion_mrr
+        - name: reactivation_mrr
+        - name: contraction_mrr
+        - name: churned_mrr
+
+  # --- Trials ---
+  - name: trial_starts
+    label: Trial starts
+    description: Trials started, by start date.
+    type: simple
+    type_params:
+      measure: trial_starts
+  - name: matured_trials
+    label: Matured trials
+    description: Trials whose trial period plus the maturity buffer has passed (ADR 0003).
+    type: simple
+    type_params:
+      measure: matured_trials
+  - name: converted_matured_trials
+    label: Converted matured trials
+    description: Matured trials that converted to paid.
+    type: simple
+    type_params:
+      measure: converted_matured_trials
+  - name: trial_conversion_rate
+    label: Trial conversion rate
+    description: >
+      Converted trials over matured trials, by trial start date (ADR 0003). Recent cohorts have no rate until
+      their trials mature.
+    type: ratio
+    type_params:
+      numerator: converted_matured_trials
+      denominator: matured_trials
+
+  # --- Card dunning ---
+  - name: dunning_cases
+    label: Dunning cases
+    description: Card invoices whose first charge failed, by first-failure date.
+    type: simple
+    type_params:
+      measure: dunning_cases
+  - name: resolved_dunning_cases
+    label: Resolved dunning cases
+    description: Dunning cases that ended (recovered or written off).
+    type: simple
+    type_params:
+      measure: resolved_dunning_cases
+  - name: recovered_dunning_cases
+    label: Recovered dunning cases
+    description: Dunning cases recovered on a scheduled retry or after a card update.
+    type: simple
+    type_params:
+      measure: recovered_dunning_cases
+
+  # --- Billing ---
+  - name: invoiced_amount
+    label: Invoiced (cents)
+    description: Amount due on invoices issued, by issue date.
+    type: simple
+    type_params:
+      measure: invoiced_amount
+  - name: collected_amount
+    label: Collected (cents)
+    description: Money received from succeeded payment attempts, by attempt date.
+    type: simple
+    type_params:
+      measure: collected_amount
+  - name: ending_ar
+    label: Ending AR (cents)
+    description: Accounts receivable at the month-end. A balance; for a month, use the month-end value.
+    type: simple
+    type_params:
+      measure: ending_ar
+  - name: card_recovery_rate
+    label: Card recovery rate
+    description: >
+      Recovered dunning cases over resolved ones (recovered or written off), by first-failure date. Cases still
+      in dunning are left out until they resolve.
+    type: ratio
+    type_params:
+      numerator: recovered_dunning_cases
+      denominator: resolved_dunning_cases
