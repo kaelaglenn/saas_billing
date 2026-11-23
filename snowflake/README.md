@@ -67,17 +67,17 @@ To start over, [teardown.sql](teardown.sql) drops everything bootstrap.sql creat
 ## GitHub Actions settings
 
 The [dbt CI workflow](../.github/workflows/dbt_ci.yml) connects as `DBT_CI_SVC` and the
-[deploy workflow](../.github/workflows/dbt_deploy.yml) as `DBT_PROD_SVC`, using three repository settings
+[deploy workflow](../.github/workflows/dbt_deploy.yml) as `DBT_PROD_SVC`, using three repository secrets
 (GitHub → Settings → Secrets and variables → Actions):
 
 | Name | Kind | Value |
 |---|---|---|
-| `SNOWFLAKE_ACCOUNT` | variable | the account identifier |
+| `SNOWFLAKE_ACCOUNT` | secret | the account identifier (a secret, not a variable, so it's masked in public run logs) |
 | `SNOWFLAKE_CI_PRIVATE_KEY` | secret | contents of `~/.snowflake/keys/DBT_CI_SVC.p8` |
 | `SNOWFLAKE_PROD_PRIVATE_KEY` | secret | contents of `~/.snowflake/keys/DBT_PROD_SVC.p8` |
 
 ```bash
-gh variable set SNOWFLAKE_ACCOUNT --body "<ORG>-<ACCOUNT>"
+gh secret set SNOWFLAKE_ACCOUNT --body "<ORG>-<ACCOUNT>"
 ```
 
 ```bash
