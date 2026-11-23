@@ -143,8 +143,9 @@ private keys from being committed, and run ruff and SQLFluff.
 - **[Deploy](../.github/workflows/dbt_deploy.yml)** runs `dbt build` into `ANALYTICS` as `DBT_PROD_SVC`, the only
   user that can write there, when a merge changes the dbt project. Unit tests are skipped in production; CI runs
   them. The same workflow runs every Monday as a canary (the data is fixed, so it checks that keys, grants, packages
-  and the account still work) and keeps `manifest.json` and the docs site as an artifact for 90 days
-  ([ADR 0006](decisions/0006-production-deploy-in-place-with-repo-secret.md)).
+  and the account still work) and keeps `manifest.json` as an artifact for 90 days
+  ([ADR 0006](decisions/0006-production-deploy-in-place-with-repo-secret.md)). After a successful build it publishes
+  the [dbt docs site](https://kaelaglenn.github.io/saas_billing/) to GitHub Pages.
 
 Repository secrets for these workflows: [GitHub Actions settings](../snowflake/README.md#github-actions-settings).
 

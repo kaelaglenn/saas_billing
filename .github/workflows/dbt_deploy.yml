@@ -8,7 +8,8 @@
 # place: each table is replaced as it's built, then tested. CI has already built and tested the same code on the
 # same raw data, so a blue/green build-then-swap would add complexity without removing real risk here.
 #
-# On success it uploads manifest.json (what slim CI compares PRs against) and the dbt docs site.
+# On success it uploads manifest.json (what slim CI compares PRs against) and publishes the dbt docs site to GitHub
+# Pages (https://kaelaglenn.github.io/saas_billing/).
 name: dbt deploy
 
 on:
@@ -78,3 +79,32 @@ jobs:
             transform/target/index.html
           retention-days: 90
           if-no-files-found: error
+
+      # The public docs site (GitHub Pages): only the files the dbt docs page loads.
+      - name: Stage docs site
+        run: |
+          mkdir -p docs-site
+          cp transform/target/index.html transform/target/manifest.json transform/target/catalog.json docs-site/
+
+      - name: Upload docs site
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        with:
+          path: docs-site
+
+  # Publishes the docs site from a successful production build. Its own job, so only this step gets the
+  # permissions Pages needs; the dbt build keeps read-only repository access.
+  docs:
+    name: Publish dbt docs
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.publish.outputs.page_url }}
+    steps:
+      - name: Publish to GitHub Pages
+        id: publish
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1
