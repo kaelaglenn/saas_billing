@@ -29,6 +29,7 @@ generator (Python) ──▶ data/raw ──dlt──▶ Snowflake RAW.BILLING �
 
 | To see | Start with |
 |---|---|
+| Lineage, model and column docs | [dbt docs site](https://kaelaglenn.github.io/saas_billing/) (rebuilt with every production deploy) |
 | How the messy source was profiled | [docs/raw_sources.md](docs/raw_sources.md) |
 | Judgment calls | ADRs [0001](docs/decisions/0001-renewals-as-checkpoints-in-event-replay.md) (event replay), [0003](docs/decisions/0003-trial-conversion-on-matured-trials.md) (trial conversion), [0008](docs/decisions/0008-mrr-bridge-counts-month-end-states.md) (MRR bridge) |
 | The core modeling | [int_subscription_history](transform/models/intermediate/subscriptions/int_subscription_history.sql) (event log → SCD Type 2), [fct_mrr_bridge](transform/models/marts/subscriptions/fct_mrr_bridge.sql) |
