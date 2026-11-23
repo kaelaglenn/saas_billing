@@ -1,0 +1,50 @@
+# Unit tests: hand-written inputs and expected outputs for logic that real data may not exercise. Expected rows
+# come from the business rules, not from running the model.
+
+unit_tests:
+
+  - name: int_subscription_history_replays_changes
+    description: >
+      Replaying one subscription's changes. A change that sets one attribute keeps the latest value of every
+      other attribute (a seat change after an upgrade keeps the upgraded plan). A checkpoint (renewal, ADR 0001)
+      resets seats instead of adding to them. Past-due periods make an active subscription past_due. Changes at
+      the same instant give one row; changes that change nothing give none. MRR spreads annual prices over 12
+      months and is zero once ended.
+    model: int_subscription_history
+    given:
+      - input: ref('int_subscription_state_changes')
+        rows:
+          - {subscription_id: sub_a, changed_at: '2024-01-10 00:00:00 +00:00', sort_order: 1, change_kind: checkpoint, source_id: e1, lifecycle_status: active, plan: pro, seats: 10, billing_frequency: monthly}
+          - {subscription_id: sub_a, changed_at: '2024-01-15 00:00:00 +00:00', sort_order: 2, change_kind: immediate, source_id: c1, seat_delta: 0}
+          - {subscription_id: sub_a, changed_at: '2024-01-20 00:00:00 +00:00', sort_order: 2, change_kind: immediate, source_id: c2, plan: premium}
+          - {subscription_id: sub_a, changed_at: '2024-01-25 00:00:00 +00:00', sort_order: 2, change_kind: immediate, source_id: c3, seat_delta: 5}
+          - {subscription_id: sub_a, changed_at: '2024-02-10 00:00:00 +00:00', sort_order: 1, change_kind: checkpoint, source_id: e2, lifecycle_status: active, plan: premium, seats: 12, billing_frequency: annual}
+          - {subscription_id: sub_a, changed_at: '2024-02-15 00:00:00 +00:00', sort_order: 2, change_kind: immediate, source_id: c4, seat_delta: -2}
+          - {subscription_id: sub_a, changed_at: '2024-03-01 00:00:00 +00:00', sort_order: 3, change_kind: past_due, source_id: p1, past_due_change: 1}
+          - {subscription_id: sub_a, changed_at: '2024-03-05 00:00:00 +00:00', sort_order: 3, change_kind: past_due, source_id: p2, past_due_change: -1}
+          - {subscription_id: sub_a, changed_at: '2024-04-01 00:00:00 +00:00', sort_order: 2, change_kind: immediate, source_id: c5, plan: pro}
+          - {subscription_id: sub_a, changed_at: '2024-04-01 00:00:00 +00:00', sort_order: 2, change_kind: immediate, source_id: c6, seat_delta: 2}
+          - {subscription_id: sub_a, changed_at: '2024-05-01 00:00:00 +00:00', sort_order: 4, change_kind: ending, source_id: x1, lifecycle_status: cancelled}
+      - input: ref('plan_prices')
+        rows:
+          - {plan: pro, billing_frequency: monthly, unit_price_cents: 1900}
+          - {plan: pro, billing_frequency: annual, unit_price_cents: 20520}
+          - {plan: premium, billing_frequency: monthly, unit_price_cents: 2900}
+          - {plan: premium, billing_frequency: annual, unit_price_cents: 31320}
+    expect:
+      rows:
+        # started: 10 x 1,900
+        - {valid_from: '2024-01-10 00:00:00 +00:00', valid_to: '2024-01-20 00:00:00 +00:00', subscription_status: active, plan: pro, billing_frequency: monthly, seats: 10, mrr_cents: 19000, is_current: false}
+        # (the zero seat change on Jan 15 changes nothing, so no row) upgrade: 10 x 2,900
+        - {valid_from: '2024-01-20 00:00:00 +00:00', valid_to: '2024-01-25 00:00:00 +00:00', subscription_status: active, plan: premium, billing_frequency: monthly, seats: 10, mrr_cents: 29000, is_current: false}
+        # +5 seats keeps premium: 15 x 2,900
+        - {valid_from: '2024-01-25 00:00:00 +00:00', valid_to: '2024-02-10 00:00:00 +00:00', subscription_status: active, plan: premium, billing_frequency: monthly, seats: 15, mrr_cents: 43500, is_current: false}
+        # renewal to annual resets seats to 12 (not 17): 12 x 31,320 / 12
+        - {valid_from: '2024-02-10 00:00:00 +00:00', valid_to: '2024-02-15 00:00:00 +00:00', subscription_status: active, plan: premium, billing_frequency: annual, seats: 12, mrr_cents: 31320, is_current: false}
+        # -2 seats: 10 x 31,320 / 12
+        - {valid_from: '2024-02-15 00:00:00 +00:00', valid_to: '2024-03-01 00:00:00 +00:00', subscription_status: active, plan: premium, billing_frequency: annual, seats: 10, mrr_cents: 26100, is_current: false}
+        - {valid_from: '2024-03-01 00:00:00 +00:00', valid_to: '2024-03-05 00:00:00 +00:00', subscription_status: past_due, plan: premium, billing_frequency: annual, seats: 10, mrr_cents: 26100, is_current: false}
+        - {valid_from: '2024-03-05 00:00:00 +00:00', valid_to: '2024-04-01 00:00:00 +00:00', subscription_status: active, plan: premium, billing_frequency: annual, seats: 10, mrr_cents: 26100, is_current: false}
+        # downgrade and +2 seats at the same instant: one row, 12 x 20,520 / 12
+        - {valid_from: '2024-04-01 00:00:00 +00:00', valid_to: '2024-05-01 00:00:00 +00:00', subscription_status: active, plan: pro, billing_frequency: annual, seats: 12, mrr_cents: 20520, is_current: false}
+        - {valid_from: '2024-05-01 00:00:00 +00:00', valid_to: null, subscription_status: cancelled, plan: pro, billing_frequency: annual, seats: 12, mrr_cents: 0, is_current: true}

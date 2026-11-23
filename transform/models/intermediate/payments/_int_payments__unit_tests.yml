@@ -1,0 +1,98 @@
+# Unit tests: hand-written inputs and expected outputs for logic that real data may not exercise. Expected rows
+# come from the business rules, not from running the model.
+
+unit_tests:
+
+  - name: int_invoice_month_end_balances_ages_at_boundaries
+    description: >
+      January's cutoff is 2024-02-01 05:00 UTC (midnight ET), exclusive. Aging buckets at each boundary, with any
+      part of a day past due counting as a day. An invoice paid, issued or written off exactly at the cutoff
+      belongs to the next month: it's owed at the cutoff if paid or written off then, and not owed if issued then.
+      Only payments that succeeded before the cutoff reduce the balance.
+    model: int_invoice_month_end_balances
+    given:
+      - input: ref('int_reporting_months')
+        rows:
+          - {month_start_date_et: '2024-01-01', month_end_date_et: '2024-01-31', month_ended_at: '2024-02-01 05:00:00 +00:00', is_month_closed: true}
+      - input: ref('int_invoice_payment_summary')
+        rows:
+          # aging boundaries: due at the cutoff, and 1 second past each bucket edge
+          - {invoice_id: inv_due_at_cutoff, amount_due_cents: 10000, issued_at: '2023-10-01 00:00:00 +00:00', due_at: '2024-02-01 05:00:00 +00:00'}
+          - {invoice_id: inv_1_second_late, amount_due_cents: 10000, issued_at: '2023-10-01 00:00:00 +00:00', due_at: '2024-02-01 04:59:59 +00:00'}
+          - {invoice_id: inv_30_days_late, amount_due_cents: 10000, issued_at: '2023-10-01 00:00:00 +00:00', due_at: '2024-01-02 05:00:00 +00:00'}
+          - {invoice_id: inv_30_days_1_second_late, amount_due_cents: 10000, issued_at: '2023-10-01 00:00:00 +00:00', due_at: '2024-01-02 04:59:59 +00:00'}
+          - {invoice_id: inv_60_days_late, amount_due_cents: 10000, issued_at: '2023-10-01 00:00:00 +00:00', due_at: '2023-12-03 05:00:00 +00:00'}
+          - {invoice_id: inv_60_days_1_second_late, amount_due_cents: 10000, issued_at: '2023-10-01 00:00:00 +00:00', due_at: '2023-12-03 04:59:59 +00:00'}
+          - {invoice_id: inv_90_days_late, amount_due_cents: 10000, issued_at: '2023-10-01 00:00:00 +00:00', due_at: '2023-11-03 05:00:00 +00:00'}
+          - {invoice_id: inv_90_days_1_second_late, amount_due_cents: 10000, issued_at: '2023-10-01 00:00:00 +00:00', due_at: '2023-11-03 04:59:59 +00:00'}
+          # cutoff edges
+          - {invoice_id: inv_paid_at_cutoff, amount_due_cents: 10000, issued_at: '2024-01-10 00:00:00 +00:00', due_at: '2024-02-09 00:00:00 +00:00', paid_at: '2024-02-01 05:00:00 +00:00'}
+          - {invoice_id: inv_paid_before_cutoff, amount_due_cents: 10000, issued_at: '2024-01-10 00:00:00 +00:00', due_at: '2024-02-09 00:00:00 +00:00', paid_at: '2024-02-01 04:59:59 +00:00'}
+          - {invoice_id: inv_issued_at_cutoff, amount_due_cents: 10000, issued_at: '2024-02-01 05:00:00 +00:00', due_at: '2024-03-02 05:00:00 +00:00'}
+          - {invoice_id: inv_written_off_at_cutoff, amount_due_cents: 10000, issued_at: '2023-12-01 00:00:00 +00:00', due_at: '2023-12-31 00:00:00 +00:00', written_off_at: '2024-02-01 05:00:00 +00:00'}
+          - {invoice_id: inv_written_off_before_cutoff, amount_due_cents: 10000, issued_at: '2023-12-01 00:00:00 +00:00', due_at: '2023-12-31 00:00:00 +00:00', written_off_at: '2024-02-01 04:59:59 +00:00'}
+          # partly paid: one success and one failure before the cutoff
+          - {invoice_id: inv_partly_paid, amount_due_cents: 10000, issued_at: '2024-01-10 00:00:00 +00:00', due_at: '2024-02-09 00:00:00 +00:00'}
+      - input: ref('stg_billing__payments')
+        rows:
+          - {invoice_id: inv_paid_at_cutoff, payment_status: succeeded, amount_cents: 10000, attempted_at: '2024-02-01 05:00:00 +00:00'}
+          - {invoice_id: inv_paid_before_cutoff, payment_status: succeeded, amount_cents: 10000, attempted_at: '2024-02-01 04:59:59 +00:00'}
+          - {invoice_id: inv_partly_paid, payment_status: succeeded, amount_cents: 4000, attempted_at: '2024-01-15 00:00:00 +00:00'}
+          - {invoice_id: inv_partly_paid, payment_status: failed, amount_cents: 6000, attempted_at: '2024-01-20 00:00:00 +00:00'}
+    expect:
+      rows:
+        - {invoice_id: inv_due_at_cutoff, month_start_date_et: '2024-01-01', balance_cents: 10000, days_past_due: 0, aging_bucket: current}
+        - {invoice_id: inv_1_second_late, month_start_date_et: '2024-01-01', balance_cents: 10000, days_past_due: 1, aging_bucket: '1-30'}
+        - {invoice_id: inv_30_days_late, month_start_date_et: '2024-01-01', balance_cents: 10000, days_past_due: 30, aging_bucket: '1-30'}
+        - {invoice_id: inv_30_days_1_second_late, month_start_date_et: '2024-01-01', balance_cents: 10000, days_past_due: 31, aging_bucket: '31-60'}
+        - {invoice_id: inv_60_days_late, month_start_date_et: '2024-01-01', balance_cents: 10000, days_past_due: 60, aging_bucket: '31-60'}
+        - {invoice_id: inv_60_days_1_second_late, month_start_date_et: '2024-01-01', balance_cents: 10000, days_past_due: 61, aging_bucket: '61-90'}
+        - {invoice_id: inv_90_days_late, month_start_date_et: '2024-01-01', balance_cents: 10000, days_past_due: 90, aging_bucket: '61-90'}
+        - {invoice_id: inv_90_days_1_second_late, month_start_date_et: '2024-01-01', balance_cents: 10000, days_past_due: 91, aging_bucket: '90+'}
+        - {invoice_id: inv_paid_at_cutoff, month_start_date_et: '2024-01-01', balance_cents: 10000, days_past_due: 0, aging_bucket: current}
+        - {invoice_id: inv_written_off_at_cutoff, month_start_date_et: '2024-01-01', balance_cents: 10000, days_past_due: 33, aging_bucket: '31-60'}
+        - {invoice_id: inv_partly_paid, month_start_date_et: '2024-01-01', balance_cents: 6000, days_past_due: 0, aging_bucket: current}
+
+  - name: int_card_dunning_outcomes_classifies_outcomes
+    description: >
+      Only card invoices whose first attempt failed are dunning cases. A success at an exact multiple of 7 days
+      after the first attempt is a scheduled retry; one second off the schedule is a card update. Without a
+      success, a write-off ends the case; otherwise it's still in dunning.
+    model: int_card_dunning_outcomes
+    given:
+      - input: ref('stg_billing__payments')
+        rows:
+          - {invoice_id: inv_retry_7, payment_method: card, payment_status: failed, attempt_number: 1, attempted_at: '2024-03-01 10:00:00 +00:00', failure_reason: card_declined}
+          - {invoice_id: inv_retry_7, payment_method: card, payment_status: succeeded, attempt_number: 2, attempted_at: '2024-03-08 10:00:00 +00:00'}
+          - {invoice_id: inv_retry_14, payment_method: card, payment_status: failed, attempt_number: 1, attempted_at: '2024-03-01 10:00:00 +00:00', failure_reason: insufficient_funds}
+          - {invoice_id: inv_retry_14, payment_method: card, payment_status: failed, attempt_number: 2, attempted_at: '2024-03-08 10:00:00 +00:00', failure_reason: insufficient_funds}
+          - {invoice_id: inv_retry_14, payment_method: card, payment_status: succeeded, attempt_number: 3, attempted_at: '2024-03-15 10:00:00 +00:00'}
+          - {invoice_id: inv_card_update, payment_method: card, payment_status: failed, attempt_number: 1, attempted_at: '2024-03-01 10:00:00 +00:00', failure_reason: expired_card}
+          - {invoice_id: inv_card_update, payment_method: card, payment_status: succeeded, attempt_number: 2, attempted_at: '2024-03-08 10:00:01 +00:00'}
+          - {invoice_id: inv_written_off, payment_method: card, payment_status: failed, attempt_number: 1, attempted_at: '2024-03-01 10:00:00 +00:00', failure_reason: card_declined}
+          - {invoice_id: inv_written_off, payment_method: card, payment_status: failed, attempt_number: 2, attempted_at: '2024-03-08 10:00:00 +00:00', failure_reason: card_declined}
+          - {invoice_id: inv_written_off, payment_method: card, payment_status: failed, attempt_number: 3, attempted_at: '2024-03-15 10:00:00 +00:00', failure_reason: card_declined}
+          - {invoice_id: inv_in_dunning, payment_method: card, payment_status: failed, attempt_number: 1, attempted_at: '2024-03-01 10:00:00 +00:00', failure_reason: card_declined}
+          # not dunning cases: the first card attempt succeeded; a non-card failure
+          - {invoice_id: inv_paid_first_time, payment_method: card, payment_status: succeeded, attempt_number: 1, attempted_at: '2024-03-01 10:00:00 +00:00'}
+          - {invoice_id: inv_bank_transfer, payment_method: bank_transfer, payment_status: failed, attempt_number: 1, attempted_at: '2024-03-01 10:00:00 +00:00'}
+      - input: ref('stg_billing__invoices')
+        rows:
+          - {invoice_id: inv_retry_7, subscription_id: sub_1}
+          - {invoice_id: inv_retry_14, subscription_id: sub_2}
+          - {invoice_id: inv_card_update, subscription_id: sub_3}
+          - {invoice_id: inv_written_off, subscription_id: sub_4}
+          - {invoice_id: inv_in_dunning, subscription_id: sub_5}
+          - {invoice_id: inv_paid_first_time, subscription_id: sub_6}
+          - {invoice_id: inv_bank_transfer, subscription_id: sub_7}
+      - input: ref('int_invoice_delinquency_periods')
+        rows:
+          - {invoice_id: inv_written_off, end_reason: written_off, written_off_at: '2024-03-22 10:00:00 +00:00'}
+          - {invoice_id: inv_in_dunning, end_reason: null}
+    expect:
+      rows:
+        - {invoice_id: inv_retry_7, dunning_outcome: recovered_on_retry, attempt_count: 2, recovery_attempt_number: 2, days_to_recover: 7}
+        - {invoice_id: inv_retry_14, dunning_outcome: recovered_on_retry, attempt_count: 3, recovery_attempt_number: 3, days_to_recover: 14}
+        - {invoice_id: inv_card_update, dunning_outcome: recovered_after_card_update, attempt_count: 2, recovery_attempt_number: 2, days_to_recover: 7}
+        - {invoice_id: inv_written_off, dunning_outcome: written_off, attempt_count: 3, recovery_attempt_number: null, days_to_recover: null}
+        - {invoice_id: inv_in_dunning, dunning_outcome: in_dunning, attempt_count: 1, recovery_attempt_number: null, days_to_recover: null}

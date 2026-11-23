@@ -1,0 +1,58 @@
+# Unit tests: hand-written inputs and expected outputs for logic that real data may not exercise. Expected rows
+# come from the business rules, not from running the model.
+
+unit_tests:
+
+  - name: fct_subscription_months_classifies_movements
+    description: >
+      Each MRR movement type, in the order the case checks them: the opening month is never new; a reactivation
+      is never new; a month after a gap starts from zero; churn is involuntary only when the subscription lapsed.
+    model: fct_subscription_months
+    given:
+      - input: ref('int_subscription_month_end_states')
+        rows:
+          # sub_open: live in the opening month, then unchanged, upgraded, fewer seats, cancelled
+          - {subscription_month_id: o1, subscription_id: sub_open, month_start_date_et: '2023-12-01', subscription_status: active, plan: pro, billing_frequency: monthly, seats: 10, mrr_cents: 1000}
+          - {subscription_month_id: o2, subscription_id: sub_open, month_start_date_et: '2024-01-01', subscription_status: active, plan: pro, billing_frequency: monthly, seats: 10, mrr_cents: 1000}
+          - {subscription_month_id: o3, subscription_id: sub_open, month_start_date_et: '2024-02-01', subscription_status: active, plan: premium, billing_frequency: monthly, seats: 10, mrr_cents: 1500}
+          - {subscription_month_id: o4, subscription_id: sub_open, month_start_date_et: '2024-03-01', subscription_status: active, plan: premium, billing_frequency: monthly, seats: 8, mrr_cents: 1200}
+          - {subscription_month_id: o5, subscription_id: sub_open, month_start_date_et: '2024-04-01', subscription_status: cancelled, plan: premium, billing_frequency: monthly, seats: 8, mrr_cents: 0}
+          # sub_new: a trial month, a first paying month, then lapsed
+          - {subscription_month_id: n1, subscription_id: sub_new, month_start_date_et: '2024-01-01', subscription_status: trialing, plan: pro, billing_frequency: monthly, seats: 5, mrr_cents: 0}
+          - {subscription_month_id: n2, subscription_id: sub_new, month_start_date_et: '2024-02-01', subscription_status: active, plan: pro, billing_frequency: monthly, seats: 5, mrr_cents: 2000}
+          - {subscription_month_id: n3, subscription_id: sub_new, month_start_date_et: '2024-03-01', subscription_status: lapsed, plan: pro, billing_frequency: monthly, seats: 5, mrr_cents: 0}
+          # sub_react: a returning account's new subscription
+          - {subscription_month_id: r1, subscription_id: sub_react, month_start_date_et: '2024-02-01', subscription_status: active, plan: pro, billing_frequency: monthly, seats: 1, mrr_cents: 1900}
+          # sub_gap: no row for February, so March doesn't compare to January
+          - {subscription_month_id: g1, subscription_id: sub_gap, month_start_date_et: '2024-01-01', subscription_status: active, plan: pro, billing_frequency: monthly, seats: 1, mrr_cents: 1000}
+          - {subscription_month_id: g3, subscription_id: sub_gap, month_start_date_et: '2024-03-01', subscription_status: active, plan: pro, billing_frequency: monthly, seats: 1, mrr_cents: 1000}
+          # sub_freq: monthly to annual (cheaper per month)
+          - {subscription_month_id: f1, subscription_id: sub_freq, month_start_date_et: '2024-01-01', subscription_status: active, plan: pro, billing_frequency: monthly, seats: 1, mrr_cents: 1900}
+          - {subscription_month_id: f2, subscription_id: sub_freq, month_start_date_et: '2024-02-01', subscription_status: active, plan: pro, billing_frequency: annual, seats: 1, mrr_cents: 1710}
+      - input: ref('dim_reporting_months')
+        rows:
+          - {month_start_date_et: '2023-12-01', is_opening_balance: true}
+          - {month_start_date_et: '2024-01-01', is_opening_balance: false}
+          - {month_start_date_et: '2024-02-01', is_opening_balance: false}
+          - {month_start_date_et: '2024-03-01', is_opening_balance: false}
+          - {month_start_date_et: '2024-04-01', is_opening_balance: false}
+      - input: ref('stg_billing__subscription_events')
+        rows:
+          - {subscription_id: sub_react, event_type: subscription_started, is_reactivation: true}
+          - {subscription_id: sub_new, event_type: subscription_started, is_reactivation: false}
+          - {subscription_id: sub_open, event_type: renewed, is_reactivation: null}
+    expect:
+      rows:
+        - {subscription_id: sub_open, month_start_date_et: '2023-12-01', previous_mrr_cents: 0, mrr_change_cents: 1000, movement_type: opening, churn_type: null, has_plan_change: false, has_seat_change: false, has_frequency_change: false, is_reactivation: false}
+        - {subscription_id: sub_open, month_start_date_et: '2024-01-01', previous_mrr_cents: 1000, mrr_change_cents: 0, movement_type: unchanged, churn_type: null, has_plan_change: false, has_seat_change: false, has_frequency_change: false, is_reactivation: false}
+        - {subscription_id: sub_open, month_start_date_et: '2024-02-01', previous_mrr_cents: 1000, mrr_change_cents: 500, movement_type: expansion, churn_type: null, has_plan_change: true, has_seat_change: false, has_frequency_change: false, is_reactivation: false}
+        - {subscription_id: sub_open, month_start_date_et: '2024-03-01', previous_mrr_cents: 1500, mrr_change_cents: -300, movement_type: contraction, churn_type: null, has_plan_change: false, has_seat_change: true, has_frequency_change: false, is_reactivation: false}
+        - {subscription_id: sub_open, month_start_date_et: '2024-04-01', previous_mrr_cents: 1200, mrr_change_cents: -1200, movement_type: churn, churn_type: voluntary, has_plan_change: false, has_seat_change: false, has_frequency_change: false, is_reactivation: false}
+        - {subscription_id: sub_new, month_start_date_et: '2024-01-01', previous_mrr_cents: 0, mrr_change_cents: 0, movement_type: none, churn_type: null, has_plan_change: false, has_seat_change: false, has_frequency_change: false, is_reactivation: false}
+        - {subscription_id: sub_new, month_start_date_et: '2024-02-01', previous_mrr_cents: 0, mrr_change_cents: 2000, movement_type: new, churn_type: null, has_plan_change: false, has_seat_change: false, has_frequency_change: false, is_reactivation: false}
+        - {subscription_id: sub_new, month_start_date_et: '2024-03-01', previous_mrr_cents: 2000, mrr_change_cents: -2000, movement_type: churn, churn_type: involuntary, has_plan_change: false, has_seat_change: false, has_frequency_change: false, is_reactivation: false}
+        - {subscription_id: sub_react, month_start_date_et: '2024-02-01', previous_mrr_cents: 0, mrr_change_cents: 1900, movement_type: reactivation, churn_type: null, has_plan_change: false, has_seat_change: false, has_frequency_change: false, is_reactivation: true}
+        - {subscription_id: sub_gap, month_start_date_et: '2024-01-01', previous_mrr_cents: 0, mrr_change_cents: 1000, movement_type: new, churn_type: null, has_plan_change: false, has_seat_change: false, has_frequency_change: false, is_reactivation: false}
+        - {subscription_id: sub_gap, month_start_date_et: '2024-03-01', previous_mrr_cents: 0, mrr_change_cents: 1000, movement_type: new, churn_type: null, has_plan_change: false, has_seat_change: false, has_frequency_change: false, is_reactivation: false}
+        - {subscription_id: sub_freq, month_start_date_et: '2024-01-01', previous_mrr_cents: 0, mrr_change_cents: 1900, movement_type: new, churn_type: null, has_plan_change: false, has_seat_change: false, has_frequency_change: false, is_reactivation: false}
+        - {subscription_id: sub_freq, month_start_date_et: '2024-02-01', previous_mrr_cents: 1900, mrr_change_cents: -190, movement_type: contraction, churn_type: null, has_plan_change: false, has_seat_change: false, has_frequency_change: true, is_reactivation: false}
