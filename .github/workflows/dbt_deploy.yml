@@ -55,9 +55,10 @@ jobs:
         working-directory: transform
         run: uv run dbt deps
 
-      - name: dbt build (models, seeds, tests)
+      # Unit tests check logic on hand-written rows; CI runs them on every PR, so production skips them.
+      - name: dbt build (models, seeds, data tests)
         working-directory: transform
-        run: uv run dbt build --target prod
+        run: uv run dbt build --exclude-resource-type unit_test --target prod
 
       - name: Generate docs
         working-directory: transform
