@@ -74,7 +74,7 @@ The [dbt CI workflow](../.github/workflows/dbt_ci.yml) connects as `DBT_CI_SVC` 
 |---|---|---|
 | `SNOWFLAKE_ACCOUNT` | secret | the account identifier (a secret, not a variable, so it's masked in public run logs) |
 | `SNOWFLAKE_CI_PRIVATE_KEY` | secret | contents of `~/.snowflake/keys/DBT_CI_SVC.p8` |
-| `SNOWFLAKE_PROD_PRIVATE_KEY` | secret | contents of `~/.snowflake/keys/DBT_PROD_SVC.p8` |
+| `SNOWFLAKE_PROD_PRIVATE_KEY` | secret of the `production` environment (deployments limited to `main`) | contents of `~/.snowflake/keys/DBT_PROD_SVC.p8` |
 
 ```bash
 gh secret set SNOWFLAKE_ACCOUNT --body "<ORG>-<ACCOUNT>"
@@ -85,12 +85,21 @@ gh secret set SNOWFLAKE_CI_PRIVATE_KEY < ~/.snowflake/keys/DBT_CI_SVC.p8
 ```
 
 ```bash
-gh secret set SNOWFLAKE_PROD_PRIVATE_KEY < ~/.snowflake/keys/DBT_PROD_SVC.p8
+gh secret set SNOWFLAKE_PROD_PRIVATE_KEY --env production < ~/.snowflake/keys/DBT_PROD_SVC.p8
 ```
 
-The prod key is a repository secret while the repo is private (GitHub's free plan has no environments for
-private repos). When the repo goes public, move it into a `production` environment that only `main` can use, so
-no workflow running on another branch can read it.
+The prod key is a secret of the `production` environment, not of the repository. Only jobs that declare
+`environment: production` can read it, and the environment accepts deployments from `main` only, so no workflow
+running on another branch can reach production ([ADR 0006](../docs/decisions/0006-production-deploy-in-place-with-repo-secret.md)).
+Create the environment and its branch rule with:
+
+```bash
+gh api -X PUT repos/<OWNER>/<REPO>/environments/production -F "deployment_branch_policy[protected_branches]=false" -F "deployment_branch_policy[custom_branch_policies]=true"
+```
+
+```bash
+gh api -X POST repos/<OWNER>/<REPO>/environments/production/deployment-branch-policies -f name=main -f type=branch
+```
 
 **Moving to a new account** (e.g. a new trial): run the bootstrap, register keys, then update all three settings
 with the commands above.

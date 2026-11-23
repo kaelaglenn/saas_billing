@@ -31,15 +31,17 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-  SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PROD_PRIVATE_KEY }}
-
 jobs:
   deploy:
     name: dbt build (prod)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # The prod key is a secret of the production environment, which only main can deploy to, so no other branch's
+    # workflow can read it (ADR 0006).
+    environment: production
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PROD_PRIVATE_KEY }}
     steps:
       # Actions are pinned to commit SHAs (a tag can be moved; a SHA can't). Version in the comment.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
