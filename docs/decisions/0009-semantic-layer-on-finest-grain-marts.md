@@ -1,6 +1,6 @@
 # 0009. Build the Semantic Layer on the finest-grain marts, with balances semi-additive and time in Eastern Time
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-20
 - **Related:** `models/semantic_layer/`, `dim_dates`, `fct_subscription_months`, `fct_ar_month_end_balances`,
   `fct_mrr_bridge`, [ADR 0002](0002-report-in-eastern-time-store-in-utc.md),
@@ -9,7 +9,7 @@
 ## Context
 
 We added the dbt Semantic Layer (MetricFlow) so the project's metrics have one governed definition each:
-20 metrics across MRR, trials, billing and card dunning. Three choices shape every metric:
+19 metrics across MRR, trials, billing and card dunning. Three choices shape every metric:
 
 - **Which marts to build on.** The marts include rollups that already hold monthly totals (`fct_mrr_bridge`,
   `fct_ar_rollforward`) and finer facts underneath them (`fct_subscription_months`, one row per subscription

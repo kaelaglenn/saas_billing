@@ -13,4 +13,4 @@ aren't rewritten; a new record supersedes an old one. Write new ones with the `/
 | [0006](0006-production-deploy-in-place-with-repo-secret.md) | Deploy production in place, with the key as a repository secret until the repo is public | Accepted | 2026-11-18 |
 | [0007](0007-slim-ci-against-prod-manifest.md) | Slim CI against the production manifest, with full-build fallbacks | Accepted | 2026-11-19 |
 | [0008](0008-mrr-bridge-counts-month-end-states.md) | The MRR bridge counts subscriptions at month-ends; a same-month convert-and-lapse is neither new nor churned | Accepted | 2026-11-19 |
-| [0009](0009-semantic-layer-on-finest-grain-marts.md) | Build the Semantic Layer on the finest-grain marts, with balances semi-additive and time in Eastern Time | Proposed | 2026-11-20 |
+| [0009](0009-semantic-layer-on-finest-grain-marts.md) | Build the Semantic Layer on the finest-grain marts, with balances semi-additive and time in Eastern Time | Accepted | 2026-11-20 |
