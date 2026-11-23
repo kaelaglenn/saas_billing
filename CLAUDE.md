@@ -12,7 +12,8 @@ generator (Python) ──▶ data/raw ──dlt──▶ Snowflake RAW.BILLING �
 - `docs/raw_sources.md`: what we know about each raw table (grain, keys, timezones, nulls, duplicates). Read it
   before touching a source; update it when you learn something new.
 - `docs/decisions/`: architecture decision records (ADRs); new ones via the `/adr` skill.
-- README: setup, the dbt targets, and the full naming table.
+- `docs/development.md`: setup, the dbt targets, the full naming table, and CI/CD. `docs/generator.md`: how the
+  source data is simulated.
 
 ## Commands
 
