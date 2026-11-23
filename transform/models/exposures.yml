@@ -2,7 +2,7 @@ exposures:
   - name: portfolio_case_study
     label: Portfolio case study (kaelaglenn.com)
     type: dashboard
-    maturity: low   # not published yet; raise to medium once the page is live
+    maturity: medium   # published and linked from the README; a portfolio page, not a team's operational dashboard
     url: https://kaelaglenn.com/projects/saas-billing
     description: >
       The public write-up of this project, on the kaelaglenn-site repo's static site. Its charts (MRR bridge by
